@@ -1715,25 +1715,25 @@ napi_value NapiCertCmsParser::GetCerts(napi_env env, napi_callback_info info)
             CertGenerateBusinessError(env, CF_ERR_PARAMETER_CHECK, "failed to unwrap napi cms parser obj."));
         return nullptr;
     }
-    CmsParserCtx *ctx = static_cast<CmsParserCtx *>(CfMalloc(sizeof(CmsParserCtx), 0));
-    if (ctx == nullptr) {
-        LOGE("create context fail.");
-        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_MALLOC, "Failed to create a cmsParser class"));
-        return nullptr;
-    }
     HcfCmsParser *cmsParser = napiCmsParser->GetCertCmsParser();
     if (cmsParser == nullptr) {
         LOGE("cmsParser is nullptr!");
         napi_throw(env, CertGenerateBusinessError(env, CF_ERR_PARAMETER_CHECK, "cmsParser is nullptr!"));
         return nullptr;
     }
-    ctx->cmsParser = cmsParser;
     int32_t format = 0;
     if (!CertGetInt32FromJSParams(env, argv[PARAM0], format)) {
         LOGE("get cmsFormat failed");
         napi_throw(env, CertGenerateBusinessError(env, CF_ERR_PARAMETER_CHECK, "get cmsFormat failed"));
         return nullptr;
     }
+    CmsParserCtx *ctx = static_cast<CmsParserCtx *>(CfMalloc(sizeof(CmsParserCtx), 0));
+    if (ctx == nullptr) {
+        LOGE("create context fail.");
+        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_MALLOC, "Failed to create a cmsParser class"));
+        return nullptr;
+    }
+    ctx->cmsParser = cmsParser;
     ctx->cmsCertType = static_cast<HcfCmsCertType>(format);
     napi_create_promise(env, &ctx->deferred, &ctx->promise);
     return NewCmsGetCertsAsyncWork(env, ctx);
