@@ -1427,14 +1427,16 @@ static CfResult GetCertsOpenssl(HcfCmsParserSpi *self, HcfCmsCertType cmsCertTyp
 
     STACK_OF(X509) *certsStack = CMS_get1_certs(impl->cms);
     if (certsStack == NULL) {
-        LOGE("CMS_get1_certs returned NULL");
-        CfPrintOpensslError();
-        certs = NULL;
+        LOGD("CMS_get1_certs returned NULL");
+        certs->data = NULL;
+        certs->count = 0;
         return CF_SUCCESS;
     }
     int32_t certsNum = sk_X509_num(certsStack);
     if (certsNum <= 0) {
-        LOGE("sk X509 num : 0, failed!");
+        LOGD("sk X509 num : 0!");
+        certs->data = NULL;
+        certs->count = 0;
         sk_X509_pop_free(certsStack, X509_free);
         certs = NULL;
         return CF_SUCCESS;
@@ -1612,6 +1614,8 @@ static CfResult DecryptEnvelopedDataOpenssl(HcfCmsParserSpi *self,
     BIO *encryptedContentBio = NULL;
     res = CmsDecryptGetContentData(hasCmsContent, options, &encryptedContentBio);
     if (res != CF_SUCCESS) {
+        EVP_PKEY_free(pkey);
+        X509_free(cert);
         LOGE("Failed to get encrypted content data from bio");
         return res;
     }
