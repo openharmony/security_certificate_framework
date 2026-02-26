@@ -339,55 +339,46 @@ int32_t CfOpensslHasUnsupportedCriticalExtension(const CfBase *object, bool *out
     return CF_SUCCESS;
 }
 
-static int GetTargetNid(const CfBlob *oid, int *nid)
-{
-    uint32_t length = oid->size + 1; /* add '\0' in the end */
-    uint8_t *oidString = (uint8_t *)CfMalloc(length, 0);
-    if (oidString == NULL) {
-        CF_LOG_E("Failed to malloc oid string");
-        return CF_ERR_MALLOC;
-    }
-
-    if (memcpy_s(oidString, length, oid->data, oid->size) != EOK) {
-        CF_LOG_E("Failed to copy oid string");
-        CfFree(oidString);
-        oidString = NULL;
-        return CF_ERR_COPY;
-    }
-
-    *nid = OBJ_txt2nid((char *)oidString);
-    CfFree(oidString);
-    oidString = NULL;
-    return CF_SUCCESS;
-}
-
-static int32_t FoundExtMatchedNid(const X509_EXTENSIONS *exts, int targetNid, X509_EXTENSION **found)
+static int32_t FoundExtMatchedOid(const X509_EXTENSIONS *exts, const CfBlob *oid, X509_EXTENSION **found)
 {
     int32_t extNums = sk_X509_EXTENSION_num(exts);
     if ((extNums <= 0) || (extNums > MAX_COUNT_OID)) {
         CF_LOG_E("Failed to get extension numbers");
         return CF_ERR_CRYPTO_OPERATION;
     }
-
+    char *oidString = (char *)CfMalloc(oid->size + 1, 0);
+    if (oidString == NULL) {
+        CF_LOG_E("Failed to malloc oid string");
+        return CF_ERR_MALLOC;
+    }
+    (void)memcpy_s(oidString, oid->size, oid->data, oid->size);
+    ASN1_OBJECT *obj = OBJ_txt2obj(oidString, 1);
+    CfFree(oidString);
+    if (obj == NULL) {
+        CF_LOG_E("Failed to get obj from oidString.");
+        return CF_INVALID_PARAMS;
+    }
     for (int i = 0; i < extNums; ++i) {
         X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
         if (ex == NULL) {
             CF_LOG_E("Failed to get exts [%{public}d] value", i);
+            ASN1_OBJECT_free(obj);
             return CF_ERR_CRYPTO_OPERATION;
         }
-
-        int nid = OBJ_obj2nid(X509_EXTENSION_get_object(ex));
-        if (nid == NID_undef) {
-            CF_LOG_E("nid undefined");
+        ASN1_OBJECT *exObj = X509_EXTENSION_get_object(ex);
+        if (exObj == NULL) {
+            CF_LOG_E("Failed to get extension object.");
+            ASN1_OBJECT_free(obj);
             return CF_ERR_CRYPTO_OPERATION;
         }
-
-        if (targetNid == nid) {
+        if (OBJ_cmp(obj, exObj) == 0) {
             *found = ex;
+            ASN1_OBJECT_free(obj);
             return CF_SUCCESS;
         }
     }
-    CF_LOG_E("no found target nid.");
+    ASN1_OBJECT_free(obj);
+    CF_LOG_E("Not find extension.");
     return CF_NOT_EXIST;
 }
 
@@ -474,20 +465,11 @@ int32_t CfOpensslGetEntry(const CfBase *object, CfExtensionEntryType type, const
         return ret;
     }
 
-    /* get target nid from oid */
-    int targetNid;
-    ret = GetTargetNid(oid, &targetNid);
-    if ((ret != CF_SUCCESS) || (targetNid == NID_undef)) {
-        CF_LOG_E("nid is undefined");
-        ret = (ret == CF_SUCCESS) ? CF_INVALID_PARAMS : ret;
-        return ret;
-    }
-
     /* found one extension matched target nid in extensions */
     X509_EXTENSION *found = NULL;
-    ret = FoundExtMatchedNid(exts, targetNid, &found);
+    ret = FoundExtMatchedOid(exts, oid, &found);
     if (ret != CF_SUCCESS) {
-        CF_LOG_E("call FoundExtMatchedNid failed.");
+        CF_LOG_E("Failed to get matched extension.");
         return ret;
     }
 
