@@ -33,6 +33,7 @@ CfEncodingBlob g_extension[] = {
     { const_cast<uint8_t *>(g_extensionData02), sizeof(g_extensionData02), CF_FORMAT_DER },
     { const_cast<uint8_t *>(g_extensionData03), sizeof(g_extensionData03), CF_FORMAT_DER },
     { const_cast<uint8_t *>(g_extensionTaintedData), sizeof(g_extensionTaintedData), CF_FORMAT_DER },
+    { const_cast<uint8_t *>(g_userDefinedExtension), sizeof(g_userDefinedExtension), CF_FORMAT_DER },
 };
 
 class CfAdapterExtensionTest : public testing::Test {
@@ -754,6 +755,29 @@ HWTEST_F(CfAdapterExtensionTest, OpensslGetEntryTest012, TestSize.Level0)
     }
 
     CfOpensslDestoryExtension(&obj012);
+}
+
+/**
+ * @tc.name: OpensslGetEntryTest013
+ * @tc.desc: Test CertFramework adapter extension object get entry interface performance
+ * @tc.type: FUNC
+ */
+HWTEST_F(CfAdapterExtensionTest, OpensslGetEntryTest013, TestSize.Level0)
+{
+    CfBase *obj013 = nullptr;
+    int32_t ret = CfOpensslCreateExtension(&g_extension[4], &obj013);
+    EXPECT_EQ(ret, CF_SUCCESS) << "Normal adapter create extension object test failed, recode:" << ret;
+
+    char oidStr[] = "1.3.6.1.4.1.2011.2.376.1.3";
+    CfBlob oid = { static_cast<uint32_t>(strlen(oidStr)), reinterpret_cast<uint8_t *>(oidStr) };
+    CfBlob outBlob = { 0, nullptr };
+
+    ret = CfOpensslGetEntry(obj013, CF_EXT_ENTRY_TYPE_ENTRY_VALUE, &oid, &outBlob);
+    EXPECT_EQ(ret, CF_SUCCESS) << "Normal adapter extension object get entry value test failed,  recode:" << ret;
+    EXPECT_TRUE(CompareBlob(&outBlob, &g_extensionEntryValueBlob13)) <<
+        "Normal adapter extension object get entry value test failed, get outBlob faield";
+    CF_FREE_BLOB(outBlob);
+    CfOpensslDestoryExtension(&obj013);
 }
 
 /**
