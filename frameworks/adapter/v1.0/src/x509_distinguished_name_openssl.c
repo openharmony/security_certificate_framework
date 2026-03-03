@@ -120,6 +120,35 @@ static CfResult GetDataByEntryOpenssl(int32_t count, CfArray *outArr, X509_NAME_
     return CF_SUCCESS;
 }
 
+static CfResult GetDataByEntryOpensslUtf8(int32_t count, CfEncodinigType encodingType, CfArray *outArr,
+    X509_NAME_ENTRY **neArr)
+{
+    outArr->data = (CfBlob *)CfMalloc(count * sizeof(CfBlob), 0);
+    if (outArr->data == NULL) {
+        LOGE("CfMalloc error");
+        return CF_ERR_MALLOC;
+    }
+    outArr->count = count;
+    for (int i = 0; i < count; ++i) {
+        ASN1_STRING *str = X509_NAME_ENTRY_get_data(neArr[i]);
+        unsigned char *p = NULL;
+        int len = ASN1_STRING_to_UTF8(&p, str);
+        if (len <= 0) {
+            LOGE("ASN1_STRING_to_UTF8 error");
+            CfArrayDataClearAndFree(outArr);
+            return CF_ERR_CRYPTO_OPERATION;
+        }
+        CfResult res = DeepCopyDataToOut((const char *)p, len, &(outArr->data[i]));
+        OPENSSL_free(p);
+        if (res != CF_SUCCESS) {
+            LOGE("DeepCopyDataToOut failed.");
+            CfArrayDataClearAndFree(outArr);
+            return res;
+        }
+    }
+    return CF_SUCCESS;
+}
+
 static CfResult GetNameTypeByOpenssl(HcfX509DistinguishedNameOpensslImpl *realName, CfBlob *type, CfArray *outArr)
 {
     if (realName == NULL || type == NULL || outArr == NULL) {
@@ -158,6 +187,54 @@ static CfResult GetNameTypeByOpenssl(HcfX509DistinguishedNameOpensslImpl *realNa
 
     if (j > 0) {
         CfResult res = GetDataByEntryOpenssl(j, outArr, neArr);
+        CfFree(neArr);
+        neArr = NULL;
+        return res;
+    }
+
+    CfFree(neArr);
+    neArr = NULL;
+    return CF_SUCCESS;
+}
+
+static CfResult GetNameTypeByOpensslUtf8(HcfX509DistinguishedNameOpensslImpl *realName, CfBlob *type,
+    CfEncodinigType encodingType, CfArray *outArr)
+{
+    if (realName == NULL || type == NULL || outArr == NULL || encodingType != CF_ENCODING_UTF8) {
+        LOGE("The input data is null or encoding type is not UTF8!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    if (type->size < 1) {
+        LOGE("The input type size is zero!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    X509_NAME_ENTRY **neArr = (X509_NAME_ENTRY **)CfMalloc(
+        X509_NAME_entry_count(realName->name) * sizeof(X509_NAME_ENTRY *), 0);
+    if (neArr == NULL) {
+        LOGE("CfMalloc error");
+        return CF_ERR_MALLOC;
+    }
+    int j = 0;
+    for (int i = 0; i < X509_NAME_entry_count(realName->name); ++i) {
+        X509_NAME_ENTRY *ne = X509_NAME_get_entry(realName->name, i);
+        ASN1_OBJECT *obj = X509_NAME_ENTRY_get_object(ne);
+        int nid = OBJ_obj2nid(obj);
+        const char *str = OBJ_nid2sn(nid);
+        if (str == NULL) {
+            LOGE("OBJ_nid2sn error!");
+            CfFree(neArr);
+            neArr = NULL;
+            return CF_ERR_CRYPTO_OPERATION;
+        }
+
+        if (strlen(str) == (unsigned int)(type->size - 1) && memcmp(str, type->data, strlen(str)) == 0) {
+            neArr[j++] = ne;
+        }
+    }
+
+    if (j > 0) {
+        CfResult res = GetDataByEntryOpensslUtf8(j, encodingType, outArr, neArr);
         CfFree(neArr);
         neArr = NULL;
         return res;
@@ -228,6 +305,21 @@ static CfResult GetNameExOpenssl(HcfX509DistinguishedNameSpi *self, CfEncodinigT
     }
     BIO_free(bio);
     return CF_SUCCESS;
+}
+
+static CfResult GetNameOpensslUtf8(HcfX509DistinguishedNameSpi *self, CfBlob *type, CfEncodinigType encodingType,
+    CfArray *outArr)
+{
+    if (self == NULL) {
+        LOGE("The input data is null!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (!CfIsClassMatch((CfObjectBase *)self, GetX509DistinguishedNameClass())) {
+        LOGE("Input wrong class type!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    HcfX509DistinguishedNameOpensslImpl *realName = (HcfX509DistinguishedNameOpensslImpl *)self;
+    return GetNameTypeByOpensslUtf8(realName, type, encodingType, outArr);
 }
 
 static CfResult SetValueToX509Name(X509_NAME *name, int chtype, char *typestr, unsigned char *valstr, int isMulti)
@@ -371,6 +463,7 @@ CfResult OpensslX509DistinguishedNameSpiCreate(const CfBlob *inStream, const boo
     realName->base.engineGetEncode = GetEncodeOpenssl;
     realName->base.engineGetName = GetNameOpenssl;
     realName->base.engineGetNameEx = GetNameExOpenssl;
+    realName->base.engineGetNameUtf8 = GetNameOpensslUtf8;
     *spi = (HcfX509DistinguishedNameSpi *)realName;
     return CF_SUCCESS;
 }

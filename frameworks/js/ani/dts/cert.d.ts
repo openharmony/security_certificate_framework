@@ -275,6 +275,7 @@ declare namespace cert {
     getName(): string;
     getName(encodingType: EncodingType): string;
     getName(type: string): Array<string>;
+    getName(type: string, encodingType: EncodingType): Array<string>;
     getEncoded(): EncodingBlob;
   }
 

@@ -30,6 +30,7 @@ public:
     string GetName();
     string GetNameByEnum(EncodingType encodingType);
     array<string> GetNameByStr(string_view type);
+    array<string> GetNameByStrUtf8(string_view type, EncodingType encodingType);
     EncodingBlob GetEncoded();
 
 private:
