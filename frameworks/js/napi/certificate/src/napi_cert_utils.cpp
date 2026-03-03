@@ -1641,6 +1641,27 @@ napi_value ConvertArrayStringToNapiValue(napi_env env, CfArray *array)
     return returnArray;
 }
 
+napi_value ConvertArrayStringToNapiValueAllowEmpty(napi_env env, CfArray *array)
+{
+    if (array == nullptr) {
+        LOGE("array is null!");
+        return nullptr;
+    }
+    napi_value returnArray = nullptr;
+    napi_create_array(env, &returnArray);
+    if (returnArray == nullptr) {
+        LOGE("create return array failed!");
+        return nullptr;
+    }
+    for (uint32_t i = 0; i < array->count; i++) {
+        CfBlob *blob = reinterpret_cast<CfBlob *>(array->data + i);
+        napi_value element = nullptr;
+        napi_create_string_utf8(env, reinterpret_cast<char *>(blob->data), blob->size, &element);
+        napi_set_element(env, returnArray, i, element);
+    }
+    return returnArray;
+}
+
 bool ConvertBlobToEncodingBlob(const CfBlob &blob, CfEncodingBlob *encodingBlob)
 {
     if (blob.data == nullptr || blob.size == 0) {

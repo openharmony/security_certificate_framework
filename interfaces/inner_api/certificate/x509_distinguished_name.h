@@ -36,6 +36,9 @@ struct HcfX509DistinguishedName {
 
     /** Get utf8 name from Distinguished Name. */
     CfResult (*getNameEx)(HcfX509DistinguishedName *self, CfEncodinigType encodingType, CfBlob *out);
+
+    CfResult (*getNameUtf8)(HcfX509DistinguishedName *self, CfBlob *type, CfEncodinigType encodingType,
+        CfArray *outArr);
 };
 
 typedef struct HcfX509Attribute HcfX509Attribute;

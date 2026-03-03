@@ -46,8 +46,10 @@ extern "C" {
 #endif
 
 int __real_ASN1_STRING_length(const ASN1_STRING *x);
+int __real_ASN1_STRING_to_UTF8(unsigned char **out, const ASN1_STRING *in);
 X509_NAME *__real_X509_NAME_new(void);
 int __real_OBJ_txt2nid(const char *s);
+const char *__real_OBJ_nid2sn(int n);
 
 #ifdef __cplusplus
 }
@@ -56,6 +58,34 @@ int __real_OBJ_txt2nid(const char *s);
 namespace {
 #define HCF_X509_DIST_NAME_VALID_CLASS "HcfX509DistinguishedName"
 #define X509_DISTINGUISHED_NAME_OPENSSL_CLASS "X509DistinguishedNameOpensslClass"
+
+static const char g_testBmpStringCert[] =
+    "-----BEGIN CERTIFICATE-----\r\n"
+    "MIIETTCCAzWgAwIBAgIGAgAAAAAfMA0GCSqGSIb3DQEBBQUAMEExCzAJBgNVBAYT\r\n"
+    "AmNuMRUwEwYDVQQLHgxW/Vu2eg5SoWA7XEAxGzAZBgNVBAMeEnoOUqF1NVtQi8FO\r\n"
+    "Zk4AfqdoOTAeFw0wNjEyMjIwMDAwMDBaFw0zODEyMjIwMDAwMDBaMEExCzAJBgNV\r\n"
+    "BAYTAmNuMRUwEwYDVQQLHgxW/Vu2eg5SoWA7XEAxGzAZBgNVBAMeEnoOUqF1NVtQ\r\n"
+    "i8FOZk4AfqdoOTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANWrPRA/\r\n"
+    "6vtVL8XXWdV+LPPArVGDHUKubZETkGk1EDhlFf3Uf+2VCzYvgKvSudtoyXqfYpAG\r\n"
+    "d2DFkDkks4ill2pLIE41AntwivBIDix4BfwnLwi2grWgevP4upxFjD1PxthZlzt/\r\n"
+    "d15ix+IWN3ZyGmjbWyLay/7qzTsqMe4UKRVMdQjCb8xv3LzaRRCfa9ew5OeUcSFX\r\n"
+    "ZSj49vZZCDN6efqXCSaQ1opwYtnsqnaqlak3vpFoDEAIa4HmVbd2qTtLPzyHxjtl\r\n"
+    "y/KPje6MOeTO4PIQYkU+Ca7k6+MatQeZe5S6lnQgj1PsirsgA+xshpQ6ccLIKxfp\r\n"
+    "N/YDvjuu+N3JtG8CAwEAAaOCAUkwggFFMBEGCWCGSAGG+EIBAQQEAwIBBjAOBgNV\r\n"
+    "HQ8BAf8EBAMCAP8wDwYDVR0TAQH/BAUwAwEB/zAfBgNVHSMEGDAWgBTdLR4rTiXw\r\n"
+    "SorJzqVvzwwQJkqz5zAdBgNVHQ4EFgQU3S0eK04l8EqKyc6lb88MECZKs+cwEwYJ\r\n"
+    "KwYBBAGCNxQCBAYeBABDAEEwRAYJKoZIhvcNAQkPBDcwNTAOBggqhkiG9w0DAgIC\r\n"
+    "AIAwDgYIKoZIhvcNAwQCAgCAMAcGBSsOAwIHMAoGCCqGSIb3DQMHMBUGCisGAQQB\r\n"
+    "qUNkBQYEBxYFUzEwMTIwFQYKKwYBBAGpQ2QFCQQHFgVTMTAxMjASBgorBgEEAalD\r\n"
+    "ZAIEBAQWAkNBMBIGCisGAQQBqUNkAgEEBBYCMDEwHgYIYIZIAYb4QwkEEhYQMDAw\r\n"
+    "MDAwMDAwMDAwMDAxNjANBgkqhkiG9w0BAQUFAAOCAQEAjbuEjnqjDwP4gzO4pxXE\r\n"
+    "xqVwZQJdBg+Q9Hz4B9rE4uWM/9lmgyjleoQQGGJzGLkm7ktc8c2Mm4ZVN2KhumdD\r\n"
+    "TjpZ9OBbx8CjQFpC4ozk6TrboN4LBIHPxK8UjeS+1zt8IwM+tBLVLMjrcjyJ8kPy\r\n"
+    "+dp/f943UN3+xStrhXHtCI2jeTiEoU369Ho1IoPH7byDJCmBVGjA89iZX4e68yka\r\n"
+    "Gg5FS7pzBvhZnINxsL2s0VnfeHKoSEjSr48eQeNSE3X8QbLiM8Z83+cnoCKUei9f\r\n"
+    "Ta/yLnuQMooPUzwqQ8x+SvJUnS4wTyOWR9SFgw6D4ilHplvs4DU51gkt6VFkz26T\r\n"
+    "jg==\r\n"
+    "-----END CERTIFICATE-----\r\n";
 
 typedef struct {
     HcfX509DistinguishedName base;
@@ -476,4 +506,205 @@ HWTEST_F(X509DistinguishedNameTest, HcfX509DistinguishedNameSpiEngineGetNameTest
     EXPECT_EQ(ret, CF_INVALID_PARAMS);
 }
 
+// Certificate issuerName BMPString.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test001, TestSize.Level0)
+{
+    HcfX509Certificate *x509Cert = nullptr;
+    CfEncodingBlob inStream = { 0 };
+    inStream.data = reinterpret_cast<uint8_t *>(const_cast<char *>(g_testBmpStringCert));
+    inStream.encodingFormat = CF_FORMAT_PEM;
+    inStream.len = strlen(g_testBmpStringCert) + 1;
+    CfResult ret = HcfX509CertificateCreate(&inStream, &x509Cert);
+    EXPECT_EQ(ret, CF_SUCCESS);
+    EXPECT_NE(x509Cert, nullptr);
+
+    CfBlob outData = { 0 };
+    ret = x509Cert->getIssuerNameDer(x509Cert, &outData);
+    EXPECT_EQ(ret, CF_SUCCESS);
+    EXPECT_NE(outData.data, nullptr);
+
+    HcfX509DistinguishedName *x509Name = nullptr;
+    ret = HcfX509DistinguishedNameCreate(&outData, false, &x509Name);
+    EXPECT_EQ(ret, CF_SUCCESS);
+    EXPECT_NE(x509Name, nullptr);
+    
+    CfBlob inPara = { 0, nullptr };
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    ret = x509Name->getNameUtf8(x509Name, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_SUCCESS);
+    CfArrayDataClearAndFree(&outArr);
+
+    ret = x509Name->getNameUtf8(x509Name, &inPara, static_cast<CfEncodinigType>(1), &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+
+    CfBlobDataClearAndFree(&outData);
+    CfObjDestroy(x509Name);
+    CfObjDestroy(x509Cert);
+}
+
+// Cover GetNameUtf8 abnormal branches.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test002, TestSize.Level0)
+{
+    ASSERT_NE(g_x509Name, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    CfResult ret = g_x509Name->getNameUtf8(NULL, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+
+    HcfX509DistinguishedName invalidDistinguishedName;
+    invalidDistinguishedName.base.getClass = GetInvalidCertClass;
+    ret = g_x509Name->getNameUtf8(&invalidDistinguishedName, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+}
+
+// Cover GetNameOpensslUtf8 abnormal branches.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test003, TestSize.Level0)
+{
+    ASSERT_NE(g_x509NameSpi, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    CfResult ret = g_x509NameSpi->engineGetNameUtf8(NULL, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+
+    HcfX509DistinguishedNameSpi invalidDistinguishedNameSpi;
+    invalidDistinguishedNameSpi.base.getClass = GetInvalidCertClass;
+    ret = g_x509NameSpi->engineGetNameUtf8(&invalidDistinguishedNameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+}
+
+// Cover GetNameTypeByOpensslUtf8 abnormal branches.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test004, TestSize.Level0)
+{
+    ASSERT_NE(g_x509NameSpi, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    CfResult ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, NULL, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+
+    ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, NULL);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+
+    CfEncodinigType invalidType = static_cast<CfEncodinigType>(-1);
+    ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, invalidType, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+
+    CfBlob emptyType = { 0, nullptr };
+    ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &emptyType, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_PARAMETER_CHECK);
+}
+
+// Cover GetNameTypeByOpensslUtf8 malloc/OBJ_nid2sn error branches.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test005, TestSize.Level0)
+{
+    ASSERT_NE(g_x509NameSpi, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    StartRecordMallocNum();
+    SetMockMallocIndex(1);
+    CfResult ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_MALLOC);
+    EndRecordMallocNum();
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), OBJ_nid2sn(_))
+        .WillOnce(Return(nullptr))
+        .WillRepeatedly(Invoke(__real_OBJ_nid2sn));
+    ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_CRYPTO_OPERATION);
+    X509OpensslMock::SetMockFlag(false);
+}
+
+// Cover GetDataByEntryOpensslUtf8 malloc/DeepCopyDataToOut error branches.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test006, TestSize.Level0)
+{
+    ASSERT_NE(g_x509NameSpi, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+    StartRecordMallocNum();
+    SetMockMallocIndex(2);
+    CfResult ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_MALLOC);
+    EndRecordMallocNum();
+
+    outArr.data = nullptr;
+    outArr.count = 0;
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), DeepCopyDataToOut(_, _, _))
+        .WillRepeatedly(Return(CF_ERR_CRYPTO_OPERATION));
+    ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_CRYPTO_OPERATION);
+    X509OpensslMock::SetMockFlag(false);
+}
+
+// Cover GetDataByEntryOpensslUtf8 ASN1_STRING_to_UTF8 error branch.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test007, TestSize.Level0)
+{
+    ASSERT_NE(g_x509NameSpi, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), ASN1_STRING_to_UTF8(_, _))
+        .WillOnce(Return(-1))
+        .WillRepeatedly(Invoke(__real_ASN1_STRING_to_UTF8));
+    CfResult ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_CRYPTO_OPERATION);
+    X509OpensslMock::SetMockFlag(false);
+}
+
+// Cover GetNameTypeByOpensslUtf8 neArr malloc failure and j == 0 success branch.
+HWTEST_F(X509DistinguishedNameTest, getNameUtf8Test008, TestSize.Level0)
+{
+    ASSERT_NE(g_x509NameSpi, nullptr);
+
+    CfBlob inPara = { 0, nullptr };
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+
+    inPara.data = (uint8_t *)"CN";
+    inPara.size = strlen("CN") + 1;
+
+    StartRecordMallocNum();
+    SetMockMallocIndex(1);
+    CfResult ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &inPara, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_ERR_MALLOC);
+    EndRecordMallocNum();
+
+    CfBlob notExistType = { 0, nullptr };
+    notExistType.data = (uint8_t *)"NotExist";
+    notExistType.size = strlen("NotExist") + 1;
+    ret = g_x509NameSpi->engineGetNameUtf8(g_x509NameSpi, &notExistType, CF_ENCODING_UTF8, &outArr);
+    EXPECT_EQ(ret, CF_SUCCESS);
+}
 } // namespace

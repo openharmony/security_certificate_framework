@@ -72,6 +72,7 @@ napi_value ConvertBlobToNapiValue(napi_env env, const CfBlob *blob);
 napi_value ConvertBlobToBigIntWords(napi_env env, const CfBlob &blob);
 napi_value ConvertBlobToInt64(napi_env env, const CfBlob &blob);
 napi_value ConvertArrayStringToNapiValue(napi_env env, CfArray *array);
+napi_value ConvertArrayStringToNapiValueAllowEmpty(napi_env env, CfArray *array);
 bool ConvertBlobToEncodingBlob(const CfBlob &blob, CfEncodingBlob *encodingBlob);
 bool GetPrivateKeyInfoFromValue(napi_env env, napi_value obj, PrivateKeyInfo **privateKey);
 void FreePrivateKeyInfo(PrivateKeyInfo *privateKey);

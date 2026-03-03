@@ -118,6 +118,7 @@ ohos_unittest("cf_version1_test") {
     "-Wl,--wrap=ASN1_INTEGER_get",
     "-Wl,--wrap=ASN1_STRING_get0_data",
     "-Wl,--wrap=ASN1_STRING_length",
+    "-Wl,--wrap=ASN1_STRING_to_UTF8",
     "-Wl,--wrap=ASN1_TIME_new",
     "-Wl,--wrap=ASN1_TIME_normalize",
     "-Wl,--wrap=ASN1_TYPE_new",

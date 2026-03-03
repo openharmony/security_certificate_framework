@@ -121,6 +121,20 @@ static CfResult GetNameEx(HcfX509DistinguishedName *self, CfEncodinigType encodi
         ((HcfX509DistinguishedNameImpl *)self)->spiObj, encodingType, out);
 }
 
+static CfResult GetNameUtf8(HcfX509DistinguishedName *self, CfBlob *type, CfEncodinigType encodingType, CfArray *outArr)
+{
+    if (self == NULL) {
+        LOGE("Invalid input parameter.");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (!CfIsClassMatch((CfObjectBase *)self, GetX509DistinguishedNameClass())) {
+        LOGE("Class is not match.");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    return ((HcfX509DistinguishedNameImpl *)self)->spiObj->engineGetNameUtf8(
+        ((HcfX509DistinguishedNameImpl *)self)->spiObj, type, encodingType, outArr);
+}
+
 CfResult HcfX509DistinguishedNameCreate(const CfBlob *inStream, bool bString, HcfX509DistinguishedName **returnObj)
 {
     if ((inStream == NULL) || (returnObj == NULL)) {
@@ -148,6 +162,7 @@ CfResult HcfX509DistinguishedNameCreate(const CfBlob *inStream, bool bString, Hc
     x509NameImpl->base.getEncode = GetEncoded;
     x509NameImpl->base.getName = GetName;
     x509NameImpl->base.getNameEx = GetNameEx;
+    x509NameImpl->base.getNameUtf8 = GetNameUtf8;
     x509NameImpl->spiObj = spiObj;
     *returnObj = (HcfX509DistinguishedName *)x509NameImpl;
     return CF_SUCCESS;

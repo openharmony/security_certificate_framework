@@ -93,6 +93,7 @@ public:
     MOCK_METHOD(int, X509_NAME_get0_der, (X509_NAME * nm, const unsigned char **pder, size_t *pderlen));
     MOCK_METHOD(const char *, OBJ_nid2sn, (int n));
     MOCK_METHOD(int, ASN1_STRING_length, (const ASN1_STRING *x));
+    MOCK_METHOD(int, ASN1_STRING_to_UTF8, (unsigned char **out, const ASN1_STRING *in));
     MOCK_METHOD(CfResult, DeepCopyDataToOut, (const char *data, uint32_t len, CfBlob *out));
     MOCK_METHOD(char *, CRYPTO_strdup, (const char *str, const char *file, int line));
     MOCK_METHOD(X509_NAME *, X509_NAME_new, ());
