@@ -1576,6 +1576,11 @@ static CfResult DecryptEnvelopedCheckParams(HcfCmsParserSpi *self,
         LOGE("Class is not match.");
         return CF_ERR_PARAMETER_CHECK;
     }
+    HcfCmsParserOpensslImpl *impl = (HcfCmsParserOpensslImpl *)self;
+    if (impl->cms == NULL) {
+        LOGE("cms is null.");
+        return CF_ERR_SHOULD_NOT_CALL;
+    }
     CfResult res = CmsContentTypeCheck(self, ENVELOPED_DATA);
     if (res != CF_SUCCESS) {
         LOGE("CMS content type is not ENVELOPED_DATA");
