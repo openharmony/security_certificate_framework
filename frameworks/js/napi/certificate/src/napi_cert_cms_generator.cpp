@@ -1745,6 +1745,16 @@ static CfResult BuildDecryptEnvelopedDataOption(napi_env env, napi_value arg, Cm
         LOGE("Invalid input parameters!");
         return CF_ERR_PARAMETER_CHECK;
     }
+    napi_valuetype valueType;
+    napi_status status = napi_typeof(env, arg, &valueType);
+    if (status != napi_ok) {
+        LOGE("Failed to get decrypt enveloped data option type!");
+        return CF_ERR_NAPI;
+    }
+    if ((valueType == napi_undefined) || (valueType == napi_null)) {
+        LOGI("Decrypt enveloped data option is undefined or null.");
+        return CF_INVALID_PARAMS;
+    }
     ctx->decryptEnvelopedDataOptions = nullptr;
     CfResult res = CertGetCmsParserEnvelopedDataOptionsFromValue(env, arg, &ctx->decryptEnvelopedDataOptions);
     if (res != CF_SUCCESS) {
