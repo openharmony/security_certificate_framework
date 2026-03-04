@@ -43,6 +43,7 @@ struct HcfX509CertMatchParams {
     CfBlob *serialNumber;
     CfBlob *subject;
     CfBlob *publicKey;
+    CfEncodingBlob *privateKey;
     CfBlob *publicKeyAlgID;
     SubAltNameArray *subjectAlternativeNames;
     bool matchAllSubjectAltNames;

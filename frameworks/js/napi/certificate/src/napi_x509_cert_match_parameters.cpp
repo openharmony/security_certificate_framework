@@ -24,6 +24,7 @@
 #include "napi_cert_utils.h"
 #include "napi_object.h"
 #include "napi_x509_certificate.h"
+#include "securec.h"
 #include "utils.h"
 
 namespace OHOS {
@@ -120,6 +121,60 @@ static bool GetPublicKey(napi_env env, napi_value arg, CfBlob *&out)
         LOGE("out is nullptr");
         return false;
     }
+    return true;
+}
+
+static bool GetPrivateKey(napi_env env, napi_value arg, CfEncodingBlob *&out)
+{
+    bool result = false;
+    napi_has_named_property(env, arg, CERT_MATCH_TAG_PRIVATE_KEY.c_str(), &result);
+    if (!result) {
+        LOGI("%{public}s do not exist!", CERT_MATCH_TAG_PRIVATE_KEY.c_str());
+        return true;
+    }
+    napi_value data = nullptr;
+    napi_valuetype valueType = napi_undefined;
+    napi_status status = napi_get_named_property(env, arg, CERT_MATCH_TAG_PRIVATE_KEY.c_str(), &data);
+    if (status != napi_ok || data == nullptr) {
+        LOGE("Failed to get private key property!");
+        return false;
+    }
+    napi_typeof(env, data, &valueType);
+    bool isString = (valueType == napi_string);
+    bool isTypedArray = false;
+    if (!isString) {
+        status = napi_is_typedarray(env, data, &isTypedArray);
+        if (status != napi_ok) {
+            LOGE("Failed to check whether private key is TypedArray!");
+            return false;
+        }
+    }
+    if (!isString && !isTypedArray) {
+        LOGE("private key must be string or Uint8Array!");
+        return false;
+    }
+
+    out = static_cast<CfEncodingBlob *>(CfMalloc(sizeof(CfEncodingBlob), 0));
+    if (out == nullptr) {
+        LOGE("malloc encoding blob failed!");
+        return false;
+    }
+
+    CfBlob *blob = nullptr;
+    if (valueType == napi_string) {
+        blob = CertGetBlobFromStringJSParams(env, data);
+    } else {
+        blob = CertGetBlobFromUint8ArrJSParams(env, data);
+    }
+    if (blob == nullptr) {
+        LOGE("get private key blob failed!");
+        CfFree(out);
+        out = nullptr;
+        return false;
+    }
+    out->encodingFormat = (valueType == napi_string) ? CF_FORMAT_PEM : CF_FORMAT_DER;
+    out->data = blob->data;
+    out->len = blob->size;
     return true;
 }
 
@@ -321,6 +376,11 @@ bool BuildX509CertMatchParamsV1(napi_env env, napi_value arg, HcfX509CertMatchPa
     if (!GetPublicKey(env, arg, matchParams->publicKey)) {
         return false;
     }
+
+    if (!GetPrivateKey(env, arg, matchParams->privateKey)) {
+        return false;
+    }
+    
     if (!GetPublicKeyAlgId(env, arg, matchParams->publicKeyAlgID)) {
         return false;
     }
@@ -399,6 +459,16 @@ void FreeX509CertMatchParamsInner(HcfX509CertMatchParams *matchParams)
     CfBlobFree(&matchParams->serialNumber);
     CfBlobFree(&matchParams->subject);
     CfBlobFree(&matchParams->publicKey);
+    if (matchParams->privateKey != nullptr) {
+        if (matchParams->privateKey->data != nullptr && matchParams->privateKey->len > 0) {
+            (void)memset_s(matchParams->privateKey->data, matchParams->privateKey->len, 0,
+                matchParams->privateKey->len);
+        }
+        CfFree(matchParams->privateKey->data);
+        matchParams->privateKey->data = nullptr;
+        CfFree(matchParams->privateKey);
+        matchParams->privateKey = nullptr;
+    }
     CfBlobFree(&matchParams->publicKeyAlgID);
     CfBlobFree(&matchParams->authorityKeyIdentifier);
     CfBlobFree(&matchParams->nameConstraints);

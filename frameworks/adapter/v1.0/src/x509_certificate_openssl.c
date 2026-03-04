@@ -544,6 +544,89 @@ static CfResult ComparePublicKeyX509Openssl(HcfX509CertificateSpi *self, const C
     return res;
 }
 
+static int PrivateKeyReadNullCb(char *buf, int size, int rwflag, void *userdata)
+{
+    (void)buf;
+    (void)size;
+    (void)rwflag;
+    (void)userdata;
+    LOGE("Failed to read private key from bio.");
+    return -1;
+}
+
+static CfResult ConvertPrivateKeyBlobToKey(const CfEncodingBlob *privateKey, EVP_PKEY **outPkey)
+{
+    EVP_PKEY *priKey = NULL;
+    if (privateKey->encodingFormat == CF_FORMAT_PEM) {
+        BIO *bio = BIO_new_mem_buf(privateKey->data, (int)privateKey->len);
+        if (bio == NULL) {
+            LOGE("Failed to init bio for private key data.");
+            CfPrintOpensslError();
+            return CF_ERR_MALLOC;
+        }
+        priKey = PEM_read_bio_PrivateKey(bio, NULL, PrivateKeyReadNullCb, NULL);
+        BIO_free(bio);
+    } else if (privateKey->encodingFormat == CF_FORMAT_DER) {
+        const unsigned char *priKeyData = privateKey->data;
+        priKey = d2i_AutoPrivateKey(NULL, &priKeyData, (long)privateKey->len);
+    } else {
+        LOGE("private key encoding format is invalid!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    if (priKey == NULL) {
+        LOGE("Failed to convert private key data to EVP_PKEY.");
+        CfPrintOpensslError();
+        return CF_ERR_CRYPTO_OPERATION;
+    }
+    *outPkey = priKey;
+    return CF_SUCCESS;
+}
+
+static CfResult ComparePrivateKeyX509Openssl(HcfX509CertificateSpi *self, const CfEncodingBlob *privateKey, bool *out)
+{
+    if (privateKey == NULL) {
+        return CF_SUCCESS;
+    }
+    if ((privateKey->len == 0) || (privateKey->data == NULL)) {
+        LOGE("invalid param!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    HcfOpensslX509Cert *realCert = (HcfOpensslX509Cert *)self;
+    X509 *x509 = realCert->x509;
+    EVP_PKEY *certPubKey = X509_get_pubkey(x509);
+    if (certPubKey == NULL) {
+        LOGE("Failed to get public key from x509 cert.");
+        CfPrintOpensslError();
+        return CF_ERR_CRYPTO_OPERATION;
+    }
+
+    EVP_PKEY *priKey = NULL;
+    CfResult res = ConvertPrivateKeyBlobToKey(privateKey, &priKey);
+    if (res != CF_SUCCESS) {
+        LOGE("Failed to convert private key blob to EVP_PKEY.");
+        EVP_PKEY_free(certPubKey);
+        return res;
+    }
+
+    int32_t cmpResult = EVP_PKEY_cmp(priKey, certPubKey);
+    if (cmpResult == 0) {
+        LOGE("The private key does not match the public key in x509 cert.");
+        *out = false;
+    } else if (cmpResult < 0) {
+        LOGE("Failed to compare private key with public key in x509 cert.");
+        CfPrintOpensslError();
+        EVP_PKEY_free(priKey);
+        EVP_PKEY_free(certPubKey);
+        return CF_ERR_CRYPTO_OPERATION;
+    }
+
+    EVP_PKEY_free(priKey);
+    EVP_PKEY_free(certPubKey);
+    return CF_SUCCESS;
+}
+
 static CfResult ComparePublicKeyAlgOidX509Openssl(HcfX509CertificateSpi *self, const CfBlob *publicKeyAlgOid, bool *out)
 {
     CfResult res = CF_SUCCESS;
@@ -1488,6 +1571,12 @@ static CfResult MatchPart2(HcfX509CertificateSpi *self, const HcfX509CertMatchPa
     res = ComparePublicKeyX509Openssl(self, matchParams->publicKey, out);
     if (res != CF_SUCCESS || (*out == false)) {
         LOGE("Failed to ComparePublicKey!");
+        return res;
+    }
+    // privateKey
+    res = ComparePrivateKeyX509Openssl(self, matchParams->privateKey, out);
+    if (res != CF_SUCCESS || (*out == false)) {
+        LOGE("Failed to ComparePrivateKey!");
         return res;
     }
     // publicKeyAlgID
