@@ -216,6 +216,7 @@ declare namespace cert {
     subject?: Uint8Array;
     subjectKeyIdentifier?: Uint8Array;
     publicKey?: DataBlob;
+    privateKey?: string | Uint8Array;
     publicKeyAlgID?: string;
   }
 

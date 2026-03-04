@@ -28,6 +28,8 @@ extern "C" {
 int __real_OPENSSL_sk_num(const OPENSSL_STACK *st);
 void *__real_OPENSSL_sk_value(const OPENSSL_STACK *st, int i);
 BIO *__real_BIO_new_mem_buf(const void *buf, int len);
+EVP_PKEY *__real_PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u);
+EVP_PKEY *__real_d2i_AutoPrivateKey(EVP_PKEY **a, const unsigned char **pp, long length);
 CfResult __real_HcfX509CertificateCreate(const CfEncodingBlob *inStream, HcfX509Certificate **returnObj);
 OPENSSL_STACK *__real_OPENSSL_sk_new_null(void);
 int __real_i2d_X509(X509 *a, unsigned char **out);
@@ -240,6 +242,11 @@ void X509OpensslMock::SetMockFunDefaultBehaviorPartTwo(void)
         return __real_BIO_new_mem_buf(buf, len);
     });
 
+    ON_CALL(*this, PEM_read_bio_PrivateKey)
+        .WillByDefault([this](BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u) {
+            return __real_PEM_read_bio_PrivateKey(bp, x, cb, u);
+    });
+
     ON_CALL(*this, i2d_X509).WillByDefault([this](X509 *a, unsigned char **out) { return __real_i2d_X509(a, out); });
 
     ON_CALL(*this, X509_verify_cert).WillByDefault([this](X509_STORE_CTX *ctx) {
@@ -327,6 +334,11 @@ void X509OpensslMock::SetMockFunDefaultBehaviorPartThree(void)
     });
 
     ON_CALL(*this, X509_get1_ocsp).WillByDefault([this](X509 *x) { return __real_X509_get1_ocsp(x); });
+
+    ON_CALL(*this, d2i_AutoPrivateKey)
+        .WillByDefault([this](EVP_PKEY **a, const unsigned char **pp, long length) {
+            return __real_d2i_AutoPrivateKey(a, pp, length);
+    });
 }
 
 void X509OpensslMock::SetMockFunDefaultBehaviorPartFour(void)
@@ -675,6 +687,26 @@ BIO *__wrap_BIO_new_mem_buf(const void *buf, int len)
         return X509OpensslMock::GetInstance().BIO_new_mem_buf(buf, len);
     } else {
         return __real_BIO_new_mem_buf(buf, len);
+    }
+}
+
+EVP_PKEY *__wrap_PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u)
+{
+    if (g_mockTagX509Openssl) {
+        CF_LOG_I("X509OpensslMock PEM_read_bio_PrivateKey");
+        return X509OpensslMock::GetInstance().PEM_read_bio_PrivateKey(bp, x, cb, u);
+    } else {
+        return __real_PEM_read_bio_PrivateKey(bp, x, cb, u);
+    }
+}
+
+EVP_PKEY *__wrap_d2i_AutoPrivateKey(EVP_PKEY **a, const unsigned char **pp, long length)
+{
+    if (g_mockTagX509Openssl) {
+        CF_LOG_I("X509OpensslMock d2i_AutoPrivateKey");
+        return X509OpensslMock::GetInstance().d2i_AutoPrivateKey(a, pp, length);
+    } else {
+        return __real_d2i_AutoPrivateKey(a, pp, length);
     }
 }
 

@@ -14,6 +14,7 @@
  */
 
 #include "ani_parameters.h"
+#include "securec.h"
 
 namespace {
 using namespace ANI::CertFramework;
@@ -113,6 +114,55 @@ bool BuildCertPolicy(X509CertMatchParameters const& param, HcfX509CertMatchParam
             StringToDataBlob(param.certPolicy.value()[i], hcfParam.certPolicy->data[i]);
         }
     }
+    return true;
+}
+
+bool BuildPrivateKey(X509CertMatchParameters const& param, HcfX509CertMatchParams &hcfParam)
+{
+    if (!param.privateKey.has_value()) {
+        return true;
+    }
+    hcfParam.privateKey = static_cast<CfEncodingBlob *>(CfMalloc(sizeof(CfEncodingBlob), 0));
+    if (hcfParam.privateKey == nullptr) {
+        return false;
+    }
+    CfBlob keyBlob = {};
+    if (param.privateKey.value().get_tag() == OptStrUint8Arr::tag_t::STRING) {
+        StringToDataBlob(param.privateKey.value().get_STRING_ref(), keyBlob);
+        hcfParam.privateKey->encodingFormat = CF_FORMAT_PEM;
+    } else {
+        ArrayU8ToDataBlob(param.privateKey.value().get_UINT8ARRAY_ref(), keyBlob);
+        hcfParam.privateKey->encodingFormat = CF_FORMAT_DER;
+    }
+    if (keyBlob.size == 0 || keyBlob.data == nullptr) {
+        ANI_LOGE_THROW(CF_INVALID_PARAMS, "private key is empty");
+        CF_FREE_PTR(hcfParam.privateKey);
+        return false;
+    }
+    hcfParam.privateKey->data = static_cast<uint8_t *>(CfMalloc(keyBlob.size, 0));
+    if (hcfParam.privateKey->data == nullptr) {
+        CF_FREE_PTR(hcfParam.privateKey);
+        return false;
+    }
+    if (memcpy_s(hcfParam.privateKey->data, keyBlob.size, keyBlob.data, keyBlob.size) != EOK) {
+        CF_FREE_PTR(hcfParam.privateKey->data);
+        CF_FREE_PTR(hcfParam.privateKey);
+        return false;
+    }
+    hcfParam.privateKey->len = keyBlob.size;
+    return true;
+}
+
+bool BuildPublicKey(X509CertMatchParameters const& param, HcfX509CertMatchParams &hcfParam)
+{
+    if (!param.publicKey.has_value()) {
+        return true;
+    }
+    hcfParam.publicKey = static_cast<CfBlob *>(CfMalloc(sizeof(CfBlob), 0));
+    if (hcfParam.publicKey == nullptr) {
+        return false;
+    }
+    ArrayU8ToDataBlob(param.publicKey.value().data, *hcfParam.publicKey);
     return true;
 }
 
@@ -401,13 +451,14 @@ bool BuildX509CertMatchParamsV1(X509CertMatchParameters const& param, HcfX509Cer
         }
         ArrayU8ToDataBlob(param.subject.value(), *hcfParam.subject);
     }
-    if (param.publicKey.has_value()) {
-        hcfParam.publicKey = static_cast<CfBlob *>(CfMalloc(sizeof(CfBlob), 0));
-        if (hcfParam.publicKey == nullptr) {
-            return false;
-        }
-        ArrayU8ToDataBlob(param.publicKey.value().data, *hcfParam.publicKey);
+    if (!BuildPublicKey(param, hcfParam)) {
+        return false;
     }
+
+    if (!BuildPrivateKey(param, hcfParam)) {
+        return false;
+    }
+
     if (param.publicKeyAlgID.has_value()) {
         hcfParam.publicKeyAlgID = static_cast<CfBlob *>(CfMalloc(sizeof(CfBlob), 0));
         if (hcfParam.publicKeyAlgID == nullptr) {
@@ -514,6 +565,13 @@ void FreeX509CertMatchParams(HcfX509CertMatchParams &hcfParam)
     CF_FREE_PTR(hcfParam.nameConstraints);
     CF_FREE_PTR(hcfParam.privateKeyValid);
     CF_FREE_PTR(hcfParam.subjectKeyIdentifier);
+    if (hcfParam.privateKey != nullptr) {
+        if (hcfParam.privateKey->data != nullptr && hcfParam.privateKey->len > 0) {
+            (void)memset_s(hcfParam.privateKey->data, hcfParam.privateKey->len, 0, hcfParam.privateKey->len);
+        }
+        CF_FREE_PTR(hcfParam.privateKey->data);
+        CF_FREE_PTR(hcfParam.privateKey);
+    }
     CfBlobFree(&hcfParam.keyUsage);
     if (hcfParam.extendedKeyUsage != nullptr) {
         CF_FREE_PTR(hcfParam.extendedKeyUsage->data);
