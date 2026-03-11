@@ -23,6 +23,7 @@
 #include "cf_blob.h"
 #include "cf_result.h"
 #include "x509_distinguished_name.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 namespace OHOS {
     static char g_nameStr[] = "/CN=John Doe/OU=IT Department/O=ACME Inc./L=San Francisco/ST=California/C=US";
@@ -88,9 +89,12 @@ namespace OHOS {
         if (data == nullptr || size < 1) {
             return false;
         }
+
         CfBlob inStream = { 0 };
-        inStream.data = const_cast<uint8_t*>(data);
-        inStream.size = size;
+        FuzzedDataProvider fdp(data, size);
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        inStream.data = inputData.empty() ? nullptr : inputData.data();
+        inStream.size = inputData.size();
         HcfX509DistinguishedName *x509DistinguishedNameObj = nullptr;
         CfResult res = HcfX509DistinguishedNameCreate(&inStream, false, &x509DistinguishedNameObj);
         if (res != CF_SUCCESS) {

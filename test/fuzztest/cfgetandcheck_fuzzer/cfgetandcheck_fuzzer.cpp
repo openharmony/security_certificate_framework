@@ -23,6 +23,7 @@
 #include "cf_result.h"
 #include "cf_test_sdk_common.h"
 #include "cf_test_data.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 using namespace CertframeworkSdkTest;
 using namespace CertframeworkTestData;
@@ -150,8 +151,11 @@ namespace OHOS {
         TestCommonfunc(object, sizeof(params) / sizeof(CfParam), params, CF_TAG_CHECK_TYPE);
     }
 
-    bool CfObjectFuzzTest(const uint8_t* data, size_t size, CfObjectType objType)
+    bool CfObjectFuzzTest(FuzzedDataProvider &fdp, CfObjectType objType)
     {
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         uint8_t *tmpData = static_cast<uint8_t *>(CfMalloc(size, 0));
         if (tmpData == nullptr) {
             return false;
@@ -197,7 +201,8 @@ namespace OHOS {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     /* Run your code on data */
-    OHOS::CfObjectFuzzTest(data, size, CF_OBJ_TYPE_EXTENSION);
-    OHOS::CfObjectFuzzTest(data, size, CF_OBJ_TYPE_CERT);
+    FuzzedDataProvider fdp(data, size);
+    OHOS::CfObjectFuzzTest(fdp, CF_OBJ_TYPE_EXTENSION);
+    OHOS::CfObjectFuzzTest(fdp, CF_OBJ_TYPE_CERT);
     return 0;
 }

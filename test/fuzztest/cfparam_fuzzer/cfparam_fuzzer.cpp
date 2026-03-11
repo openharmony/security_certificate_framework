@@ -20,11 +20,16 @@
 #include "cf_param.h"
 #include "cf_memory.h"
 #include "cf_result.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 namespace OHOS {
 
-    bool CfParamAddandGetFuzzTest(const uint8_t* data, size_t size)
+    bool CfParamAddandGetFuzzTest(FuzzedDataProvider &fdp)
     {
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
+
         CfParamSet *paramSet = nullptr;
 
         int32_t ret = CfInitParamSet(&paramSet);
@@ -53,7 +58,7 @@ namespace OHOS {
         return true;
     }
 
-    bool CfBuildParamSetFuzzTest(const uint8_t* data, size_t size)
+    bool CfBuildParamSetFuzzTest(FuzzedDataProvider &fdp)
     {
         CfParamSet *paramSet = nullptr;
         int32_t ret = CfInitParamSet(&paramSet);
@@ -61,6 +66,9 @@ namespace OHOS {
             return false;
         }
         paramSet->paramsCnt = 1;
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         paramSet->paramSetSize += sizeof(CfParam) + size + 1; /* invalid size */
         paramSet->params[0].tag = CF_TAG_PARAM0_BUFFER;
         paramSet->params[0].blob.size = size;
@@ -76,7 +84,8 @@ namespace OHOS {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     /* Run your code on data */
-    OHOS::CfParamAddandGetFuzzTest(data, size);
-    OHOS::CfBuildParamSetFuzzTest(data, size);
+    FuzzedDataProvider fdp(data, size);
+    OHOS::CfParamAddandGetFuzzTest(fdp);
+    OHOS::CfBuildParamSetFuzzTest(fdp);
     return 0;
 }
