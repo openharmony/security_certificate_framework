@@ -20,10 +20,14 @@
 #include "cf_api.h"
 #include "cf_memory.h"
 #include "cf_result.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 namespace OHOS {
-    bool CfCreateFuzzTest(const uint8_t* data, size_t size)
+    bool CfCreateFuzzTest(FuzzedDataProvider &fdp)
     {
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         if (size < sizeof(CfObjectType) + sizeof(CfEncodingBlob)) {
             return false;
         }
@@ -61,6 +65,7 @@ namespace OHOS {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     /* Run your code on data */
-    OHOS::CfCreateFuzzTest(data, size);
+    FuzzedDataProvider fdp(data, size);
+    OHOS::CfCreateFuzzTest(fdp);
     return 0;
 }

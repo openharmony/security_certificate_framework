@@ -23,6 +23,7 @@
 #include "cf_blob.h"
 #include "cf_result.h"
 #include "x509_certificate.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 namespace OHOS {
     static char g_fuzzCert[] =
@@ -185,9 +186,11 @@ namespace OHOS {
             return false;
         }
         CfEncodingBlob inStream = { 0 };
-        inStream.data = const_cast<uint8_t *>(data);
+        FuzzedDataProvider fdp(data, size);
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        inStream.data = inputData.empty() ? nullptr : inputData.data();
+        inStream.len = inputData.size();
         inStream.encodingFormat = CF_FORMAT_PEM;
-        inStream.len = size;
         HcfX509Certificate *x509CertObj = nullptr;
         CfResult res = HcfX509CertificateCreate(&inStream, &x509CertObj);
         if (res != CF_SUCCESS) {
