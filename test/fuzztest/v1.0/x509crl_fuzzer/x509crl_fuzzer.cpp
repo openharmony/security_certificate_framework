@@ -31,6 +31,7 @@
 #include "x509_crl.h"
 #include "x509_crl_entry.h"
 #include "cert_crl_collection.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 namespace OHOS {
     constexpr int TEST_VERSION = 3;
@@ -309,8 +310,11 @@ namespace OHOS {
         (void)x509CrlDer->verify(x509CrlDer, g_keyPair->pubKey);
     }
 
-    bool FuzzDoX509CrlTest(const uint8_t *data, size_t size)
+    bool FuzzDoX509CrlTest(FuzzedDataProvider &fdp)
     {
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         HcfX509Crl *x509CrlDer = nullptr;
         CfEncodingBlob crlDerInStream = { 0 };
         unsigned char *crlStream = GetCrlStream();
@@ -399,8 +403,11 @@ namespace OHOS {
         CfObjDestroy(x509CertCrlCollection);
     }
 
-    void FuzzDoX509CrlCollectionTest(const uint8_t *data, size_t size, CfEncodingFormat format)
+    void FuzzDoX509CrlCollectionTest(FuzzedDataProvider &fdp, CfEncodingFormat format)
     {
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         if (g_testFlag) {
             OneCrlCollectionTest();
             g_testFlag = false;
@@ -444,14 +451,12 @@ namespace OHOS {
         crlArray.count = 1;
 
         ret = HcfCertCrlCollectionCreate(&certArray, &crlArray, &x509CertCrlCollection);
+        CfFree(certArray.data);
+        CfFree(crlArray.data);
         if (ret != CF_SUCCESS || x509CertCrlCollection == nullptr) {
-            CfFree(certArray.data);
-            CfFree(crlArray.data);
             return;
         }
 
-        CfFree(certArray.data);
-        CfFree(crlArray.data);
         CfObjDestroy(x509CertCrlCollection);
         return;
     }
@@ -461,9 +466,10 @@ namespace OHOS {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     /* Run your code on data */
-    OHOS::FuzzDoX509CrlTest(data, size);
-    OHOS::FuzzDoX509CrlCollectionTest(data, size, CF_FORMAT_DER);
-    OHOS::FuzzDoX509CrlCollectionTest(data, size, CF_FORMAT_PEM);
-    OHOS::FuzzDoX509CrlCollectionTest(data, size, CF_FORMAT_PKCS7);
+    FuzzedDataProvider fdp(data, size);
+    OHOS::FuzzDoX509CrlTest(fdp);
+    OHOS::FuzzDoX509CrlCollectionTest(fdp, CF_FORMAT_DER);
+    OHOS::FuzzDoX509CrlCollectionTest(fdp, CF_FORMAT_PEM);
+    OHOS::FuzzDoX509CrlCollectionTest(fdp, CF_FORMAT_PKCS7);
     return 0;
 }
