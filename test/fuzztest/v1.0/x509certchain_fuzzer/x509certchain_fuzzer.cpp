@@ -35,6 +35,7 @@
 #include "x509_certificate.h"
 #include "x509_cert_chain.h"
 #include "cert_chain_validator.h"
+#include <fuzzer/FuzzedDataProvider.h>
 
 namespace OHOS {
     constexpr int32_t CERT_HEADER_LEN = 2;
@@ -406,8 +407,11 @@ namespace OHOS {
         }
     }
 
-    void X509CertChainFuzzTest(const uint8_t* data, size_t size, CfEncodingFormat encodingFormat)
+    void X509CertChainFuzzTest(FuzzedDataProvider &fdp, CfEncodingFormat encodingFormat)
     {
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         if (g_testCertChainFlag) {
             if (CreateOneCertChain(encodingFormat) != CF_SUCCESS) {
                 return;
@@ -495,12 +499,15 @@ namespace OHOS {
         return res;
     }
 
-    void X509CertChainValidatorCreateFuzzTest(const uint8_t* data, size_t size, CfEncodingFormat certFormat)
+    void X509CertChainValidatorCreateFuzzTest(FuzzedDataProvider &fdp, CfEncodingFormat certFormat)
     {
         if (g_testCertChainValidatorFlag) {
             (void)CreateOneCertChainValidator();
             g_testCertChainValidatorFlag = false;
         }
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         if (data == nullptr || size < sizeof(uint32_t)) {
             return;
         }
@@ -724,13 +731,16 @@ namespace OHOS {
         return ret;
     }
 
-    void X509BuildResultCreateFuzzTest(const uint8_t* data, size_t size, CfEncodingFormat certFormat)
+    void X509BuildResultCreateFuzzTest(FuzzedDataProvider &fdp, CfEncodingFormat certFormat)
     {
         if (g_testCertChainBuildResultFlag) {
             (void)CreateOneCertChainBuildResultCreate();
             g_testCertChainBuildResultFlag = false;
         }
         const char *date = "20231212080000Z";
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        const uint8_t *data = inputData.empty() ? nullptr : inputData.data();
+        size_t size = inputData.size();
         if (data == nullptr || size < sizeof(int32_t) || size < (strlen(date) + 1)) {
             return;
         }
@@ -781,7 +791,7 @@ namespace OHOS {
         return;
     }
 
-    void X509BuildResultCreateFuzzTest(const uint8_t* data, size_t size)
+    void X509BuildResultCreateFuzzTest(FuzzedDataProvider &fdp)
     {
         if (g_testCreateTrustAnchorFlag) {
             OneCreateTrustAnchorWithKeyStore();
@@ -791,8 +801,9 @@ namespace OHOS {
         CfBlob pwd;
         HcfX509TrustAnchorArray *trustAnchorArray = NULL;
 
-        keyStore.data = const_cast<uint8_t *>(data);
-        keyStore.size = size;
+        std::vector<uint8_t> inputData = fdp.ConsumeRemainingBytes<uint8_t>();
+        keyStore.data = inputData.empty() ? nullptr : inputData.data();
+        keyStore.size = inputData.size();
         pwd.data = reinterpret_cast<uint8_t *>(const_cast<char *>(g_testKeystorePwd));
         pwd.size = sizeof(g_testKeystorePwd);
         CfResult result = HcfCreateTrustAnchorWithKeyStore(&keyStore, &pwd, &trustAnchorArray);
@@ -809,15 +820,16 @@ namespace OHOS {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     /* Run your code on data */
-    OHOS::X509CertChainFuzzTest(data, size, CF_FORMAT_DER);
-    OHOS::X509CertChainFuzzTest(data, size, CF_FORMAT_PKCS7);
-    OHOS::X509CertChainFuzzTest(data, size, CF_FORMAT_PEM);
-    OHOS::X509CertChainValidatorCreateFuzzTest(data, size, CF_FORMAT_DER);
-    OHOS::X509CertChainValidatorCreateFuzzTest(data, size, CF_FORMAT_PKCS7);
-    OHOS::X509CertChainValidatorCreateFuzzTest(data, size, CF_FORMAT_PEM);
-    OHOS::X509BuildResultCreateFuzzTest(data, size, CF_FORMAT_DER);
-    OHOS::X509BuildResultCreateFuzzTest(data, size, CF_FORMAT_PKCS7);
-    OHOS::X509BuildResultCreateFuzzTest(data, size, CF_FORMAT_PEM);
-    OHOS::X509BuildResultCreateFuzzTest(data, size);
+    FuzzedDataProvider fdp(data, size);
+    OHOS::X509CertChainFuzzTest(fdp, CF_FORMAT_DER);
+    OHOS::X509CertChainFuzzTest(fdp, CF_FORMAT_PKCS7);
+    OHOS::X509CertChainFuzzTest(fdp, CF_FORMAT_PEM);
+    OHOS::X509CertChainValidatorCreateFuzzTest(fdp, CF_FORMAT_DER);
+    OHOS::X509CertChainValidatorCreateFuzzTest(fdp, CF_FORMAT_PKCS7);
+    OHOS::X509CertChainValidatorCreateFuzzTest(fdp, CF_FORMAT_PEM);
+    OHOS::X509BuildResultCreateFuzzTest(fdp, CF_FORMAT_DER);
+    OHOS::X509BuildResultCreateFuzzTest(fdp, CF_FORMAT_PKCS7);
+    OHOS::X509BuildResultCreateFuzzTest(fdp, CF_FORMAT_PEM);
+    OHOS::X509BuildResultCreateFuzzTest(fdp);
     return 0;
 }
