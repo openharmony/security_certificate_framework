@@ -105,6 +105,29 @@ array<string> X500DistinguishedNameImpl::GetNameByStr(string_view type)
     return result;
 }
 
+array<string> X500DistinguishedNameImpl::GetNameByStrUtf8(string_view type, EncodingType encodingType)
+{
+    if (this->x509Name_ == nullptr) {
+        ANI_LOGE_THROW(CF_ERR_ANI, "x500 distinguished name obj is nullptr!");
+        return {};
+    }
+    CfBlob inType = {};
+    StringToDataBlob(type, inType);
+    CfEncodinigType encodeType = static_cast<CfEncodinigType>(encodingType.get_value());
+    CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+    CfResult res = this->x509Name_->getNameUtf8(this->x509Name_, &inType, encodeType, &outArr);
+    if (res != CF_SUCCESS) {
+        ANI_LOGE_THROW(res, "get name utf8 failed.");
+        return {};
+    }
+    array<string> result = array<string>::make(outArr.count, {});
+    for (uint32_t i = 0; i < outArr.count; i++) {
+        result[i] = DataBlobToString(outArr.data[i]);
+    }
+    CfArrayDataClearAndFree(&outArr);
+    return result;
+}
+
 EncodingBlob X500DistinguishedNameImpl::GetEncoded()
 {
     EncodingBlob encodingBlob = { {}, EncodingFormat(EncodingFormat::key_t::FORMAT_DER) };

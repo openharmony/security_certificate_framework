@@ -35,6 +35,7 @@ public:
 
     napi_value GetName(napi_env env, napi_callback_info info);
     napi_value GetNameEx(napi_env env, napi_callback_info info, CfEncodinigType encodingType);
+    napi_value GetNameUtf8(napi_env env, napi_callback_info info, CfEncodinigType encodingType);
     napi_value GetEncoded(napi_env env, napi_callback_info info);
     void SetX509DistinguishedNameUtf8(HcfX509DistinguishedName *x509NameUtf8_)
     {

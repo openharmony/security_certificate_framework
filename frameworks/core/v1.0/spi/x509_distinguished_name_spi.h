@@ -32,6 +32,9 @@ struct HcfX509DistinguishedNameSpi {
     CfResult (*engineGetName)(HcfX509DistinguishedNameSpi *self, CfBlob *type, CfBlob *out, CfArray *outArr);
 
     CfResult (*engineGetNameEx)(HcfX509DistinguishedNameSpi *self, CfEncodinigType encodingType, CfBlob *out);
+
+    CfResult (*engineGetNameUtf8)(HcfX509DistinguishedNameSpi *self, CfBlob *type, CfEncodinigType encodingType,
+        CfArray *outArr);
 };
 
 typedef struct HcfX509DistinguishedNameImpl HcfX509DistinguishedNameImpl;
