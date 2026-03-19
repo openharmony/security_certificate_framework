@@ -40,6 +40,8 @@ public:
     MOCK_METHOD(char *, X509_NAME_oneline, (const X509_NAME *a, char *buf, int size));
     MOCK_METHOD(int, i2d_X509, (X509 * a, unsigned char **out));
     MOCK_METHOD(BIO *, BIO_new_mem_buf, (const void *buf, int len));
+    MOCK_METHOD(EVP_PKEY *, PEM_read_bio_PrivateKey, (BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u));
+    MOCK_METHOD(EVP_PKEY *, d2i_AutoPrivateKey, (EVP_PKEY **a, const unsigned char **pp, long length));
     MOCK_METHOD(void *, OPENSSL_sk_value, (const OPENSSL_STACK *st, int i));
     MOCK_METHOD(CfResult, HcfX509CertificateCreate, (const CfEncodingBlob *inStream, HcfX509Certificate **returnObj));
     MOCK_METHOD(OPENSSL_STACK *, OPENSSL_sk_new_null, ());

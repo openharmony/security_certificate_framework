@@ -126,6 +126,8 @@ ohos_unittest("cf_version1_test") {
     "-Wl,--wrap=BIO_ctrl",
     "-Wl,--wrap=BIO_new",
     "-Wl,--wrap=BIO_new_mem_buf",
+    "-Wl,--wrap=PEM_read_bio_PrivateKey",
+    "-Wl,--wrap=d2i_AutoPrivateKey",
     "-Wl,--wrap=BN_bin2bn",
     "-Wl,--wrap=CRYPTO_strdup",
     "-Wl,--wrap=DeepCopyBlobToBlob",

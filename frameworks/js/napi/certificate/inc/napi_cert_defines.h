@@ -81,6 +81,7 @@ const std::string CERT_MATCH_TAG_SERIAL_NUMBER = "serialNumber";
 const std::string CERT_MATCH_TAG_SUBJECT = "subject";
 const std::string CERT_MATCH_TAG_SUBJECT_KEY_IDENTIFIER = "subjectKeyIdentifier";
 const std::string CERT_MATCH_TAG_PUBLIC_KEY = "publicKey";
+const std::string CERT_MATCH_TAG_PRIVATE_KEY = "privateKey";
 const std::string CERT_MATCH_TAG_PUBLIC_KEY_ALGID = "publicKeyAlgID";
 
 // X509 CRL MATCH PARAMETERS

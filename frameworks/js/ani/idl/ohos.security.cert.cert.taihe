@@ -247,6 +247,7 @@ struct X509CertMatchParameters {
   subject: Optional<@typedarray Array<u8>>;
   subjectKeyIdentifier: Optional<@typedarray Array<u8>>;
   publicKey: Optional<DataBlob>;
+  privateKey: Optional<OptStrUint8Arr>;
   publicKeyAlgID: Optional<String>;
 }
 

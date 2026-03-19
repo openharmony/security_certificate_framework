@@ -195,6 +195,7 @@ CfResult FfiCertCjX509CertificateMatch(const CjX509Certificate self, const CjX50
         matchParams->serialNumber,
         matchParams->subject,
         matchParams->publicKey,
+        matchParams->privateKey,
         matchParams->publicKeyAlgID,
         subjectAlternativeNamesPtr,
         matchParams->matchAllSubjectAltNames,
