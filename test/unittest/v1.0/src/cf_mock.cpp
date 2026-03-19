@@ -80,6 +80,7 @@ int __real_OSSL_HTTP_parse_url(const char *url, int *pssl, char **puser, char **
 int __real_X509_NAME_get0_der(X509_NAME *nm, const unsigned char **pder, size_t *pderlen);
 const char *__real_OBJ_nid2sn(int n);
 int __real_ASN1_STRING_length(const ASN1_STRING *x);
+int __real_ASN1_STRING_to_UTF8(unsigned char **out, const ASN1_STRING *in);
 CfResult __real_DeepCopyDataToOut(const char *data, uint32_t len, CfBlob *out);
 char *__real_CRYPTO_strdup(const char *str, const char *file, int line);
 X509_NAME *__real_X509_NAME_new(void);
@@ -345,6 +346,10 @@ void X509OpensslMock::SetMockFunDefaultBehaviorPartFour(void)
 
     ON_CALL(*this, ASN1_STRING_length).WillByDefault([this](const ASN1_STRING *x) {
         return __real_ASN1_STRING_length(x);
+    });
+
+    ON_CALL(*this, ASN1_STRING_to_UTF8).WillByDefault([this](unsigned char **out, const ASN1_STRING *in) {
+        return __real_ASN1_STRING_to_UTF8(out, in);
     });
 
     ON_CALL(*this, DeepCopyDataToOut).WillByDefault([this](const char *data, uint32_t len, CfBlob *out) {
@@ -1219,6 +1224,16 @@ int __wrap_ASN1_STRING_length(const ASN1_STRING *x)
         return X509OpensslMock::GetInstance().ASN1_STRING_length(x);
     } else {
         return __real_ASN1_STRING_length(x);
+    }
+}
+
+int __wrap_ASN1_STRING_to_UTF8(unsigned char **out, const ASN1_STRING *in)
+{
+    if (g_mockTagX509Openssl) {
+        CF_LOG_I("X509OpensslMock ASN1_STRING_to_UTF8");
+        return X509OpensslMock::GetInstance().ASN1_STRING_to_UTF8(out, in);
+    } else {
+        return __real_ASN1_STRING_to_UTF8(out, in);
     }
 }
 

@@ -215,6 +215,36 @@ napi_value NapiX509DistinguishedName::GetNameEx(napi_env env, napi_callback_info
     return result;
 }
 
+napi_value NapiX509DistinguishedName::GetNameUtf8(napi_env env, napi_callback_info info, CfEncodinigType encodingType)
+{
+    size_t argc = ARGS_SIZE_TWO;
+    napi_value argv[ARGS_SIZE_TWO] = { nullptr };
+    napi_value thisVar = nullptr;
+    if (napi_get_cb_info(env, info, &argc, argv, &thisVar, nullptr) != napi_ok) {
+        LOGE("Failed to get cb info!");
+        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "Get cb info failed!"));
+        return nullptr;
+    }
+    HcfX509DistinguishedName *x509Name = GetX509DistinguishedName();
+    CfBlob *inPara = CertGetBlobFromStringJSParams(env, argv[PARAM0]);
+    if (inPara != nullptr) {
+        CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
+        CfResult ret = x509Name->getNameUtf8(x509Name, inPara, encodingType, &outArr);
+        if (ret != CF_SUCCESS) {
+            LOGE("Distinguished Name get name utf8 failed.");
+            CfBlobFree(&inPara);
+            napi_throw(env, CertGenerateBusinessError(env, ret, "Distinguished Name get name utf8 failed"));
+            return nullptr;
+        }
+
+        napi_value result = ConvertArrayStringToNapiValueAllowEmpty(env, &outArr);
+        CfBlobFree(&inPara);
+        CfArrayDataClearAndFree(&outArr);
+        return result;
+    }
+    return nullptr;
+}
+
 static napi_value NapiGetEncoded(napi_env env, napi_callback_info info)
 {
     napi_value thisVar = nullptr;
@@ -230,11 +260,11 @@ static napi_value NapiGetEncoded(napi_env env, napi_callback_info info)
 
 static napi_value NapiGetName(napi_env env, napi_callback_info info)
 {
-    size_t argc = ARGS_SIZE_ONE;
+    size_t argc = ARGS_SIZE_TWO;
     napi_value thisVar = nullptr;
-    napi_value argv[ARGS_SIZE_ONE] = { nullptr };
+    napi_value argv[ARGS_SIZE_TWO] = { nullptr };
     napi_get_cb_info(env, info, &argc, argv, &thisVar, nullptr);
-    if (argc != 0 && argc != ARGS_SIZE_ONE) {
+    if (argc != 0 && argc != ARGS_SIZE_ONE && argc != ARGS_SIZE_TWO) {
         napi_throw(env, CertGenerateBusinessError(env, CF_INVALID_PARAMS, "wrong argument num!"));
         LOGE("wrong argument num!");
         return nullptr;
@@ -247,10 +277,10 @@ static napi_value NapiGetName(napi_env env, napi_callback_info info)
         LOGE("x509Name is nullptr!");
         return nullptr;
     }
+    napi_valuetype valueType0;
     if (argc == ARGS_SIZE_ONE) {
-        napi_valuetype valueType;
-        napi_typeof(env, argv[PARAM0], &valueType);
-        if (valueType == napi_number) {
+        napi_typeof(env, argv[PARAM0], &valueType0);
+        if (valueType0 == napi_number) {
             CfEncodinigType encodingType;
             if (napi_get_value_uint32(env, argv[PARAM0], reinterpret_cast<uint32_t *>(&encodingType)) != napi_ok) {
                 napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "napi_get_value_uint32 failed!"));
@@ -261,6 +291,22 @@ static napi_value NapiGetName(napi_env env, napi_callback_info info)
         } else {
             return x509Name->GetName(env, info);
         }
+    } else if (argc == ARGS_SIZE_TWO) {
+        napi_valuetype valueType1;
+        napi_typeof(env, argv[PARAM0], &valueType0);
+        napi_typeof(env, argv[PARAM1], &valueType1);
+        if (valueType0 != napi_string || valueType1 != napi_number) {
+            napi_throw(env, CertGenerateBusinessError(env, CF_INVALID_PARAMS, "wrong argument type!"));
+            LOGE("wrong argument type!");
+            return nullptr;
+        }
+        CfEncodinigType encodingType;
+        if (napi_get_value_uint32(env, argv[PARAM1], reinterpret_cast<uint32_t *>(&encodingType)) != napi_ok) {
+            napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "napi_get_value_uint32 failed!"));
+            LOGE("napi_get_value_uint32 failed!");
+            return nullptr;
+        }
+        return x509Name->GetNameUtf8(env, info, encodingType);
     }
     return x509Name->GetName(env, info);
 }
