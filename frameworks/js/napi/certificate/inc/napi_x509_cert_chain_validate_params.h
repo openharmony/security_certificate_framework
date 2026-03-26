@@ -17,10 +17,12 @@
 #define NAPI_X509_CERT_CHAIN_VALIDATE_PARAMS_H
 
 #include "cf_blob.h"
+#include "cf_result.h"
 #include "napi/native_api.h"
 #include "napi/native_common.h"
 #include "napi_cert_defines.h"
 #include "x509_cert_chain_validate_params.h"
+#include "cert_chain_validator.h"
 
 namespace OHOS {
 namespace CertFramework {
@@ -28,6 +30,9 @@ namespace CertFramework {
 bool BuildX509CertChainValidateParams(napi_env env, napi_value arg, HcfX509CertChainValidateParams &param);
 void FreeX509CertChainValidateParams(HcfX509CertChainValidateParams &param);
 void FreeTrustAnchorArray(HcfX509TrustAnchorArray *trustAnchorArray, bool freeCertFlag);
+
+CfResult BuildX509CertValidatorParams(napi_env env, napi_value arg, HcfX509CertValidatorParams &param);
+void FreeX509CertValidatorParams(HcfX509CertValidatorParams &param);
 
 } // namespace CertFramework
 } // namespace OHOS

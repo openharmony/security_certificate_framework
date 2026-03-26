@@ -21,6 +21,8 @@
 #include "cf_blob.h"
 #include "cf_object_base.h"
 #include "cf_result.h"
+#include "x509_cert_chain_validate_params.h"
+#include "x509_cert_chain_validate_result.h"
 
 typedef struct HcfCertChainValidator HcfCertChainValidator;
 
@@ -32,6 +34,65 @@ typedef struct {
     enum CfEncodingFormat format;
 } HcfCertChainData;
 
+typedef enum {
+    OCSP_DIGEST_SHA1   = 0,
+    OCSP_DIGEST_SHA224 = 1,
+    OCSP_DIGEST_SHA256 = 2,
+    OCSP_DIGEST_SHA384 = 3,
+    OCSP_DIGEST_SHA512 = 4
+} HcfOcspDigest;
+
+typedef enum {
+    CERT_REVOCATION_PREFER_OCSP     = 0,
+    CERT_REVOCATION_CRL_CHECK       = 1,
+    CERT_REVOCATION_OCSP_CHECK      = 2,
+    CERT_REVOCATION_CHECK_ALL_CERT  = 3,
+} HcfCertRevocationFlag;
+
+typedef struct {
+    CfResult *data;
+    uint32_t count;
+} HcfResultArray;
+
+typedef struct {
+    int32_t *data;
+    uint32_t count;
+} HcfInt32Array;
+
+typedef struct {
+    HcfInt32Array revocationFlags;
+    HcfX509CrlArray crls;
+    bool allowDownloadCrl;
+    bool allowOcspCheckOnline;
+    CfBlobArray ocspResponses;
+    int32_t ocspDigest;
+} HcfX509CertRevokedParams;
+
+typedef struct {
+    HcfX509CertificateArray untrustedCerts;
+    HcfX509CertificateArray trustedCerts;
+    bool trustSystemCa;
+    bool partialChain;
+    bool allowDownloadIntermediateCa;
+    bool validateDate;
+    char *date;
+    HcfInt32Array ignoreErrs;
+    HcfStringArray hostnames;
+    HcfStringArray emailAddresses;
+    HcfInt32Array keyUsage;
+    CfBlob userId;
+    HcfX509CertRevokedParams *revokedParams;
+} HcfX509CertValidatorParams;
+
+#define MAX_VERIFY_ERROR_MSG_LEN 512
+
+typedef struct {
+    HcfX509CertificateArray certs;
+    char errorMsgBuf[MAX_VERIFY_ERROR_MSG_LEN];
+    const char *errorMsg;
+} HcfVerifyCertResult;
+
+
 struct HcfCertChainValidator {
     struct CfObjectBase base;
 
@@ -40,6 +101,10 @@ struct HcfCertChainValidator {
 
     /** Get algorithm name. */
     const char *(*getAlgorithm)(HcfCertChainValidator *self);
+
+    /** validate a single X509 certificate with parameters. */
+    CfResult (*validateX509Cert)(HcfCertChainValidator *self, HcfX509Certificate *cert,
+        const HcfX509CertValidatorParams *params, HcfVerifyCertResult *result);
 };
 
 #ifdef __cplusplus

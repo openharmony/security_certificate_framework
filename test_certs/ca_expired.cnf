@@ -1,0 +1,23 @@
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir = .
+database = ./index.txt
+serial = ./serial
+new_certs_dir = .
+certificate = ./root.crt
+private_key = ./root.key
+default_md = sha256
+policy = policy_anything
+default_startdate = 200101000000Z
+default_enddate = 200201000000Z
+
+[ policy_anything ]
+countryName = optional
+stateOrProvinceName = optional
+localityName = optional
+organizationName = optional
+organizationalUnitName = optional
+commonName = supplied
+emailAddress = optional

@@ -180,5 +180,407 @@ void FreeAsyncContext(napi_env env, AsyncCtx &async)
     async = nullptr;
 }
 
+CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, bool mustExist, napi_value &value)
+{
+    bool hasValue = false;
+    if (napi_has_named_property(env, arg, name, &hasValue) != napi_ok) {
+        CF_LOG_E("check property %{public}s failed!", name);
+        return CF_ERR_NAPI;
+    }
+    if (!hasValue) {
+        if (mustExist) {
+            CF_LOG_I("%{public}s do not exist!", name);
+            return CF_INVALID_PARAMS;
+        }
+        return CF_NOT_EXIST;
+    }
+
+    napi_value obj = nullptr;
+    napi_status status = napi_get_named_property(env, arg, name, &obj);
+    if (status != napi_ok) {
+        CF_LOG_E("get property %{public}s failed!", name);
+        return CF_ERR_NAPI;
+    }
+    if (obj == nullptr) {
+        CF_LOG_E("get property %{public}s value failed!", name);
+        return CF_INVALID_PARAMS;
+    }
+    value = obj;
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetBoolValue(napi_env env, napi_value arg, const char *name, bool &value)
+{
+    napi_value obj = nullptr;
+    CfResult ret = NapiGetProperty(env, arg, name, false, obj);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    napi_valuetype valueType;
+    if (napi_typeof(env, obj, &valueType) != napi_ok) {
+        CF_LOG_E("get property %{public}s value type failed!", name);
+        return CF_ERR_NAPI;
+    }
+    if (valueType != napi_boolean) {
+        CF_LOG_E("%{public}s valueType is not boolean.", name);
+        return CF_INVALID_PARAMS;
+    }
+
+    if (napi_get_value_bool(env, obj, &value) != napi_ok) {
+        CF_LOG_E("get property %{public}s value failed!", name);
+        return CF_ERR_NAPI;
+    }
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetStringValue(napi_env env, napi_value arg, const char *name, char *&value)
+{
+    napi_value obj = nullptr;
+    CfResult ret = NapiGetProperty(env, arg, name, false, obj);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    napi_valuetype valueType;
+    if (napi_typeof(env, obj, &valueType) != napi_ok) {
+        CF_LOG_E("get property %{public}s value type failed!", name);
+        return CF_ERR_NAPI;
+    }
+    if (valueType != napi_string) {
+        CF_LOG_E("%{public}s valueType is not string.", name);
+        return CF_INVALID_PARAMS;
+    }
+
+    size_t strLen = 0;
+    if (napi_get_value_string_utf8(env, obj, NULL, 0, &strLen) != napi_ok) {
+        CF_LOG_E("get property %{public}s value len failed!", name);
+        return CF_ERR_NAPI;
+    }
+
+    if (strLen == 0 || strLen > MAX_NAPI_STRING_LEN) {
+        CF_LOG_E("%{public}s value len is invalid, the len is %{public}zu, it should be in range [1, %{public}d]",
+            name, strLen, MAX_NAPI_STRING_LEN);
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    char *str = static_cast<char *>(CfMallocEx(strLen + 1));
+    if (str == nullptr) {
+        CF_LOG_E("Failed to allocate memory for string!");
+        return CF_ERR_MALLOC;
+    }
+    if (napi_get_value_string_utf8(env, obj, str, strLen + 1, &strLen) != napi_ok) {
+        CF_LOG_E("get property %{public}s value failed!", name);
+        CfFree(str);
+        return CF_ERR_NAPI;
+    }
+    value = str;
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetBlobValue(napi_env env, napi_value arg, const char *name, CfBlob &value)
+{
+    napi_value obj = nullptr;
+    CfResult ret = NapiGetProperty(env, arg, name, false, obj);
+    if (ret != CF_SUCCESS || obj == nullptr) {
+        return ret;
+    }
+
+    bool isTypedArray = false;
+    if (napi_is_typedarray(env, obj, &isTypedArray) != napi_ok) {
+        CF_LOG_E("check property %{public}s type failed!", name);
+        return CF_ERR_NAPI;
+    }
+    if (!isTypedArray) {
+        CF_LOG_E("%{public}s valueType is not typedarray.", name);
+        return CF_INVALID_PARAMS;
+    }
+
+    napi_typedarray_type arrayType;
+    size_t length = 0;
+    void *rawData = nullptr;
+    napi_value arrayBuffer = nullptr;
+    size_t offset = 0;
+
+    napi_status status = napi_get_typedarray_info(env, obj, &arrayType, &length, &rawData, &arrayBuffer, &offset);
+    if (status != napi_ok) {
+        CF_LOG_E("get typedarray info failed!");
+        return CF_ERR_NAPI;
+    }
+    if (arrayType != napi_uint8_array || rawData == nullptr) {
+        CF_LOG_E("property %{public}s is not uint8 array!", name);
+        return CF_INVALID_PARAMS;
+    }
+    if (length == 0 || length > MAX_NAPI_BLOB_LEN) {
+        CF_LOG_E("property %{public}s length is invalid!", name);
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    value.data = static_cast<uint8_t *>(CfMallocEx(length));
+    if (value.data == nullptr) {
+        CF_LOG_E("Failed to allocate memory for blob data!");
+        return CF_ERR_MALLOC;
+    }
+    (void)memcpy_s(value.data, length, rawData, length);
+    value.size = length;
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetArrayBaseInfo(napi_env env, napi_value arg, const char *name,
+    napi_value &arrayObj, uint32_t &length, uint32_t maxLen)
+{
+    CfResult ret = NapiGetProperty(env, arg, name, false, arrayObj);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    bool isArray = false;
+    if (napi_is_array(env, arrayObj, &isArray) != napi_ok) {
+        CF_LOG_E("check property %{public}s type failed!", name);
+        return CF_ERR_NAPI;
+    }
+    if (!isArray) {
+        CF_LOG_E("%{public}s valueType is not array.", name);
+        return CF_INVALID_PARAMS;
+    }
+
+    if (napi_get_array_length(env, arrayObj, &length) != napi_ok) {
+        CF_LOG_E("Get %{public}s length failed.", name);
+        return CF_ERR_NAPI;
+    }
+
+    if (length == 0) {
+        return CF_NOT_EXIST;
+    }
+
+    if (maxLen > 0 && length > maxLen) {
+        CF_LOG_E("%{public}s length %{public}u is too long!", name, length);
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    return CF_SUCCESS;
+}
+
+void NapiFreeStringArray(HcfStringArray &array)
+{
+    if (array.data == nullptr) {
+        return;
+    }
+    for (uint32_t i = 0; i < array.count; ++i) {
+        CfFree(array.data[i]);
+    }
+    CfFree(array.data);
+    array.data = nullptr;
+    array.count = 0;
+}
+
+static CfResult NapiGetStringElement(napi_env env, napi_value element, char *&value)
+{
+    napi_valuetype valueType;
+    if (napi_typeof(env, element, &valueType) != napi_ok) {
+        CF_LOG_E("get element type failed!");
+        return CF_ERR_NAPI;
+    }
+    if (valueType != napi_string) {
+        CF_LOG_E("element valueType is not string!");
+        return CF_INVALID_PARAMS;
+    }
+
+    size_t strLen = 0;
+    if (napi_get_value_string_utf8(env, element, nullptr, 0, &strLen) != napi_ok) {
+        CF_LOG_E("get element value len failed!");
+        return CF_ERR_NAPI;
+    }
+    if (strLen == 0 || strLen > MAX_NAPI_STRING_LEN) {
+        CF_LOG_E("element value len is invalid!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    char *str = static_cast<char *>(CfMallocEx(strLen + 1));
+    if (str == nullptr) {
+        CF_LOG_E("Failed to allocate memory for string!");
+        return CF_ERR_MALLOC;
+    }
+    if (napi_get_value_string_utf8(env, element, str, strLen + 1, &strLen) != napi_ok) {
+        CF_LOG_E("get element value failed!");
+        CfFree(str);
+        return CF_ERR_NAPI;
+    }
+    value = str;
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetStringArray(napi_env env, napi_value arg, const char *name, HcfStringArray &value)
+{
+    napi_value obj = nullptr;
+    uint32_t length = 0;
+    CfResult ret = NapiGetArrayBaseInfo(env, arg, name, obj, length);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    value.data = static_cast<char **>(CfMallocEx(length * sizeof(char *)));
+    if (value.data == nullptr) {
+        CF_LOG_E("Failed to allocate out memory, size: %{public}zu!", length * sizeof(char *));
+        return CF_ERR_MALLOC;
+    }
+    value.count = length;
+
+    for (uint32_t i = 0; i < length; ++i) {
+        napi_value element;
+        if (napi_get_element(env, obj, i, &element) != napi_ok) {
+            CF_LOG_E("get element failed!");
+            NapiFreeStringArray(value);
+            return CF_ERR_NAPI;
+        }
+
+        ret = NapiGetStringElement(env, element, value.data[i]);
+        if (ret != CF_SUCCESS) {
+            CF_LOG_E("get string element failed!");
+            NapiFreeStringArray(value);
+            return ret;
+        }
+    }
+    return CF_SUCCESS;
+}
+
+static CfResult NapiGetBlobElement(napi_env env, napi_value element, CfBlob &value)
+{
+    bool isTypedArray = false;
+    if (napi_is_typedarray(env, element, &isTypedArray) != napi_ok) {
+        CF_LOG_E("check element type failed!");
+        return CF_ERR_NAPI;
+    }
+    if (!isTypedArray) {
+        CF_LOG_E("element valueType is not typedarray!");
+        return CF_INVALID_PARAMS;
+    }
+
+    napi_typedarray_type arrayType;
+    size_t length = 0;
+    void *rawData = nullptr;
+    napi_value arrayBuffer = nullptr;
+    size_t offset = 0;
+
+    napi_status status = napi_get_typedarray_info(env, element, &arrayType, &length, &rawData, &arrayBuffer, &offset);
+    if (status != napi_ok) {
+        CF_LOG_E("get typedarray info failed!");
+        return CF_ERR_NAPI;
+    }
+    if (arrayType != napi_uint8_array || rawData == nullptr) {
+        CF_LOG_E("element is not uint8 array!");
+        return CF_INVALID_PARAMS;
+    }
+    if (length == 0 || length > MAX_NAPI_BLOB_LEN) {
+        CF_LOG_E("element length is invalid!");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    value.data = static_cast<uint8_t *>(CfMallocEx(length));
+    if (value.data == nullptr) {
+        CF_LOG_E("Failed to allocate memory for blob data!");
+        return CF_ERR_MALLOC;
+    }
+    (void)memcpy_s(value.data, length, rawData, length);
+    value.size = length;
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetBlobArray(napi_env env, napi_value arg, const char *name, CfBlobArray &value)
+{
+    napi_value obj = nullptr;
+    uint32_t length = 0;
+    CfResult ret = NapiGetArrayBaseInfo(env, arg, name, obj, length);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    value.data = static_cast<CfBlob *>(CfMallocEx(length * sizeof(CfBlob)));
+    if (value.data == nullptr) {
+        CF_LOG_E("Failed to allocate out memory, size: %{public}zu!", length * sizeof(CfBlob));
+        return CF_ERR_MALLOC;
+    }
+
+    for (uint32_t i = 0; i < length; ++i) {
+        napi_value element;
+        if (napi_get_element(env, obj, i, &element) != napi_ok) {
+            CF_LOG_E("get element failed!");
+            FreeCfBlobArray(value.data, i);
+            value.data = nullptr;
+            return CF_ERR_NAPI;
+        }
+
+        ret = NapiGetBlobElement(env, element, value.data[i]);
+        if (ret != CF_SUCCESS) {
+            CF_LOG_E("get blob element failed!");
+            FreeCfBlobArray(value.data, i);
+            value.data = nullptr;
+            return ret;
+        }
+    }
+    value.count = length;
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetInt32Ex(napi_env env, napi_value arg, const char *name, int32_t &value)
+{
+    napi_value element = nullptr;
+    CfResult ret = NapiGetProperty(env, arg, name, false, element);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    napi_valuetype valueType = napi_undefined;
+    napi_typeof(env, element, &valueType);
+    if (valueType != napi_number) {
+        LOGE("%s element valueType is not number!", name);
+        return CF_INVALID_PARAMS;
+    }
+
+    if (napi_get_value_int32(env, element, &value) != napi_ok) {
+        CF_LOG_E("get element value failed!");
+        return CF_ERR_NAPI;
+    }
+    return CF_SUCCESS;
+}
+
+CfResult NapiGetInt32Array(napi_env env, napi_value arg, const char *name, HcfInt32Array &value)
+{
+    napi_value obj = nullptr;
+    uint32_t length = 0;
+    CfResult ret = NapiGetArrayBaseInfo(env, arg, name, obj, length);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    value.data = static_cast<int *>(CfMallocEx(length * sizeof(int32_t)));
+    if (value.data == nullptr) {
+        CF_LOG_E("Failed to allocate out memory, size: %{public}zu!", length * sizeof(int32_t));
+        return CF_ERR_MALLOC;
+    }
+
+    for (uint32_t i = 0; i < length; ++i) {
+        napi_value element;
+        if (napi_get_element(env, obj, i, &element) != napi_ok) {
+            CF_LOG_E("get element failed!");
+            CfFree(value.data);
+            value.data = nullptr;
+            value.count = 0;
+            return CF_ERR_NAPI;
+        }
+
+        int32_t numValue = 0;
+        if (napi_get_value_int32(env, element, &numValue) != napi_ok) {
+            CF_LOG_E("get element value failed!");
+            CfFree(value.data);
+            value.data = nullptr;
+            value.count = 0;
+            return CF_ERR_NAPI;
+        }
+        value.data[i] = numValue;
+    }
+    value.count = length;
+    return CF_SUCCESS;
+}
+
 } // namespace CertFramework
 } // namespace OHOS

@@ -48,6 +48,7 @@ ohos_unittest("cf_version1_test") {
     "src/crypto_x509_cert_chain_test_part2.cpp",
     "src/crypto_x509_cert_chain_test_part3.cpp",
     "src/crypto_x509_cert_chain_validator_test.cpp",
+    "src/crypto_x509_cert_validator_test.cpp",
     "src/crypto_x509_cert_cms_generator_test.cpp",
     "src/crypto_x509_cert_cms_generator_test_part2.cpp",
     "src/crypto_x509_cert_cms_parser_test_mock.cpp",
@@ -222,6 +223,14 @@ ohos_unittest("cf_version1_test") {
     "-Wl,--wrap=X509_check_issued",
     "-Wl,--wrap=ValidateCertDate",
     "-Wl,--wrap=X509_STORE_CTX_get1_issuer",
+    "-Wl,--wrap=ERR_peek_error",
+    "-Wl,--wrap=X509_STORE_CTX_get_error",
+    "-Wl,--wrap=X509_STORE_CTX_get0_chain",
+    "-Wl,--wrap=X509_STORE_CTX_get1_chain",
+    "-Wl,--wrap=X509_STORE_CTX_get_current_cert",
+    "-Wl,--wrap=ASN1_TIME_set_string",
+    "-Wl,--wrap=ASN1_TIME_to_tm",
+    "-Wl,--wrap=X509_up_ref",
   ]
 
   if (target_cpu == "arm") {
