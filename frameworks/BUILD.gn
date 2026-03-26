@@ -18,7 +18,6 @@ group("certificate_framework_lib") {
     deps = [
       "cj:cj_cert_ffi",
       "core:certificate_framework_core",
-      "js/ani:certificate_framework_ani",
       "js/napi/certificate:cert",
     ]
   }

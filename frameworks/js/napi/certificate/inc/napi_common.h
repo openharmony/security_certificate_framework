@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Huawei Device Co., Ltd.
+ * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,7 +16,10 @@
 #ifndef NAPI_COMMON_H
 #define NAPI_COMMON_H
 
+#include "cf_blob.h"
+#include "cf_result.h"
 #include "cf_type.h"
+#include "cert_chain_validator.h"
 #include "napi_cert_defines.h"
 #include "napi/native_api.h"
 #include "napi/native_common.h"
@@ -43,6 +46,18 @@ napi_value GetResourceName(napi_env env, const char *name);
 napi_value ConvertBlobArrayToNapiValue(napi_env env,  const CfParamSet *paramSet);
 int32_t GetBlobArrayFromParamSet(const CfParamSet *paramSet, CfArray *outArray);
 void FreeAsyncContext(napi_env env, AsyncCtx &ctx);
+
+CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, bool mustExist, napi_value &value);
+CfResult NapiGetBoolValue(napi_env env, napi_value arg, const char *name, bool &value);
+CfResult NapiGetStringValue(napi_env env, napi_value arg, const char *name, char *&value);
+CfResult NapiGetBlobValue(napi_env env, napi_value arg, const char *name, CfBlob &value);
+CfResult NapiGetArrayBaseInfo(napi_env env, napi_value arg, const char *name,
+    napi_value &arrayObj, uint32_t &length, uint32_t maxLen = MAX_LEN_OF_ARRAY);
+CfResult NapiGetStringArray(napi_env env, napi_value arg, const char *name, HcfStringArray &value);
+CfResult NapiGetBlobArray(napi_env env, napi_value arg, const char *name, CfBlobArray &value);
+CfResult NapiGetInt32Array(napi_env env, napi_value arg, const char *name, HcfInt32Array &value);
+CfResult NapiGetInt32Ex(napi_env env, napi_value arg, const char *name, int32_t &value);
+void NapiFreeStringArray(HcfStringArray &array);
 
 inline napi_value NapiGetNull(napi_env env)
 {

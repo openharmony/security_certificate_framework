@@ -169,6 +169,21 @@ static const char *GetAlgorithm(HcfCertChainValidator *self)
     return algo;
 }
 
+static CfResult ValidateX509Cert(HcfCertChainValidator *self, HcfX509Certificate *cert,
+                                 const HcfX509CertValidatorParams *params, HcfVerifyCertResult *result)
+{
+    if (self == NULL) {
+        LOGE("HcfCertChainValidator is NULL.");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (!CfIsClassMatch((CfObjectBase *)self, GetCertChainValidatorClass())) {
+        LOGE("Class is not match.");
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    CertChainValidatorImpl *impl = (CertChainValidatorImpl *)self;
+    return impl->spiObj->engineValidateX509Cert(impl->spiObj, cert, params, result);
+}
+
 CfResult HcfCertChainValidatorCreate(const char *algorithm, HcfCertChainValidator **pathValidator)
 {
     CF_LOG_I("enter");
@@ -195,6 +210,7 @@ CfResult HcfCertChainValidatorCreate(const char *algorithm, HcfCertChainValidato
     }
     returnValidator->base.validate = Validate;
     returnValidator->base.getAlgorithm = GetAlgorithm;
+    returnValidator->base.validateX509Cert = ValidateX509Cert;
     returnValidator->base.base.destroy = DestroyCertChainValidator;
     returnValidator->base.base.getClass = GetCertChainValidatorClass;
     returnValidator->spiObj = spiObj;

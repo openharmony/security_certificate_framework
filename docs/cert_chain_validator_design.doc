@@ -1,0 +1,454 @@
+# 证书链校验特性开发设计文档
+
+## 1 简介
+
+### 1.1 背景说明
+
+在证书链验证场景中，当验证过程遇到"无法获取本地颁发者证书"错误（X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY）时，通常是因为缺少中间证书。根据 X.509 标准的 Authority Information Access (AIA) 扩展，证书中可能包含指向颁发者证书的下载 URL。
+
+本特性实现了证书链验证时自动从 AIA 扩展下载缺失的中间证书，并在满足条件时重新验证，从而提高证书链验证的成功率和用户体验。
+
+### 1.2 功能概述
+
+- 支持从证书的 AIA 扩展自动下载中间证书
+- 支持下载次数限制，防止 DoS 攻击
+- 支持下载超时检测与错误处理
+- 支持通过参数控制是否启用自动下载功能
+- 完整的错误码和错误信息返回
+
+### 1.3 代码量统计
+
+| 模块 | 行数 |
+|------|------|
+| Adapter层 (OpenSSL适配) | 613 行 |
+| NAPI层 (JS接口绑定) | 903 行 |
+| 接口层 (Inner API) | 138 行 |
+| Core层 (核心框架) | 25 行 |
+| **总计** | **1677 行** |
+
+---
+
+## 2 实现方案
+
+### 2.1 JS接口
+
+#### 2.1.1 接口定义
+
+**CertChainValidator 类**
+
+```typescript
+interface CertChainValidator {
+  // 原有接口：验证证书链
+  validate(certChainData: CertChainData, callback: AsyncCallback<void>): void;
+  validate(certChainData: CertChainData): Promise<void>;
+
+  // 新增接口：带参数验证单个证书
+  validate(cert: X509Cert, params: X509CertValidatorParams, callback: AsyncCallback<VerifyCertResult>): void;
+  validate(cert: X509Cert, params: X509CertValidatorParams): Promise<VerifyCertResult>;
+}
+```
+
+**X509CertValidatorParams 参数结构**
+
+```typescript
+interface X509CertValidatorParams {
+  // 信任证书列表
+  trustedCerts?: Array<X509Cert>;
+  // 非信任证书列表（用于提供中间证书）
+  untrustedCerts?: Array<X509Cert>;
+  // 是否信任系统CA证书
+  trustSystemCa?: boolean;
+  // 是否允许部分链验证
+  partialChain?: boolean;
+  // 是否允许自动下载中间证书（新增特性）
+  allowDownloadIntermediateCa?: boolean;
+  // 是否验证日期
+  validateDate?: boolean;
+  // 验证日期（字符串格式）
+  date?: string;
+  // 忽略的错误码列表
+  ignoreErrs?: Array<number>;
+  // 主机名列表（用于主机名验证）
+  hostnames?: Array<string>;
+  // 邮箱地址列表（用于邮箱验证）
+  emailAddresses?: Array<string>;
+  // 密钥用途列表
+  keyUsage?: Array<KeyUsageType>;
+  // 用户ID
+  userId?: Uint8Array;
+  // 吊销检查参数
+  revokedParams?: X509CertRevokedParams;
+}
+```
+
+**VerifyCertResult 结果结构**
+
+```typescript
+interface VerifyCertResult {
+  // 验证后的证书链
+  certChain?: Array<X509Cert>;
+  // 错误信息
+  errorMsg?: string;
+}
+```
+
+**KeyUsageType 枚举**
+
+```typescript
+enum KeyUsageType {
+  KEYUSAGE_DIGITAL_SIGNATURE = 0,
+  KEYUSAGE_NON_REPUDIATION,
+  KEYUSAGE_KEY_ENCIPHERMENT,
+  KEYUSAGE_DATA_ENCIPHERMENT,
+  KEYUSAGE_KEY_AGREEMENT,
+  KEYUSAGE_KEY_CERT_SIGN,
+  KEYUSAGE_CRL_SIGN,
+  KEYUSAGE_ENCIPHER_ONLY,
+  KEYUSAGE_DECIPHER_ONLY
+}
+```
+
+#### 2.1.2 使用示例
+
+```javascript
+import cert from '@ohos.security.cert';
+
+// 创建证书链验证器
+let validator = cert.createCertChainValidator("PKIX");
+
+// 准备验证参数
+let params = {
+  trustedCerts: [rootCert],
+  untrustedCerts: [intermediateCert],
+  allowDownloadIntermediateCa: true,  // 启用自动下载中间证书
+  validateDate: true,
+  hostnames: ["example.com"]
+};
+
+// 验证证书
+let result = await validator.validate(leafCert, params);
+console.log("Verification result:", result.certChain);
+```
+
+#### 2.1.3 错误码定义
+
+| 错误码 | 说明 |
+|--------|------|
+| 0 | 成功 |
+| 19020001 | 内存不足 |
+| 19020003 | 参数校验失败 |
+| 19030001 | 密码学操作失败 |
+| 19030002 | 证书签名验证失败 |
+| 19030003 | 证书尚未生效 |
+| 19030004 | 证书已过期 |
+| 19030005 | 无法获取本地颁发者证书 |
+| 19030009 | 证书不受信任 |
+| 19030010 | 证书已被吊销 |
+| 19030011 | 证书包含未知关键扩展 |
+| 19030014 | 密钥用途不匹配 |
+| 19030025 | 网络超时 |
+
+---
+
+### 2.2 Inner C接口
+
+#### 2.2.1 核心数据结构
+
+```c
+// 验证参数结构体
+typedef struct {
+    HcfX509CertificateArray untrustedCerts;
+    HcfX509CertificateArray trustedCerts;
+    bool trustSystemCa;
+    bool partialChain;
+    bool allowDownloadIntermediateCa;  // 是否允许下载中间证书
+    bool validateDate;
+    char *date;
+    HcfInt32Array ignoreErrs;
+    HcfStringArray hostnames;
+    HcfStringArray emailAddresses;
+    HcfInt32Array keyUsage;
+    CfBlob userId;
+    HcfX509CertRevokedParams *revokedParams;
+} HcfX509CertValidatorParams;
+
+// 验证结果结构体
+typedef struct {
+    HcfX509CertificateArray certs;
+    const char *errorMsg;
+} HcfVerifyCertResult;
+
+// 证书链验证器接口
+struct HcfCertChainValidator {
+    struct CfObjectBase base;
+
+    // 验证证书链（原有接口）
+    CfResult (*validate)(HcfCertChainValidator *self, const HcfCertChainData *certChainData);
+
+    // 获取算法名称
+    const char *(*getAlgorithm)(HcfCertChainValidator *self);
+
+    // 验证单个X509证书（新增接口）
+    CfResult (*validateX509Cert)(HcfCertChainValidator *self, HcfX509Certificate *cert,
+        const HcfX509CertValidatorParams *params, HcfVerifyCertResult *result);
+};
+```
+
+#### 2.2.2 创建函数
+
+```c
+/**
+ * @brief 创建证书链验证器实例
+ * @param algorithm 算法名称，目前支持 "PKIX"
+ * @param pathValidator 输出参数，返回验证器实例
+ * @return CfResult 操作结果
+ */
+CfResult HcfCertChainValidatorCreate(const char *algorithm, HcfCertChainValidator **pathValidator);
+```
+
+#### 2.2.3 错误码定义
+
+```c
+typedef enum {
+    CF_SUCCESS = 0,
+    CF_INVALID_PARAMS = -10001,
+    CF_ERR_MALLOC = -10002,
+    CF_ERR_NAPI = -10003,
+    CF_ERR_PARAMETER_CHECK = -10004,
+    CF_ERR_CRYPTO_OPERATION = -20001,
+    CF_ERR_CERT_SIGNATURE_FAILURE = -20002,
+    CF_ERR_CERT_NOT_YET_VALID = -20003,
+    CF_ERR_CERT_HAS_EXPIRED = -20004,
+    CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY = -20005,
+    CF_ERR_KEYUSAGE_NO_CERTSIGN = -20006,
+    CF_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE = -20007,
+    CF_ERR_CERT_UNTRUSTED = -20009,
+    CF_ERR_CERT_REVOKED = -20010,
+    CF_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION = -20011,
+    CF_ERR_CERT_HOSTNAME_MISMATCH = -20012,
+    CF_ERR_CERT_EMAIL_ADDRESS_MISMATCH = -20013,
+    CF_ERR_CERT_KEYUSAGE_MISMATCH = -20014,
+    CF_ERR_NETWORK_TIMEOUT = -30025,
+    // ... 其他错误码
+} CfResult;
+```
+
+---
+
+### 2.3 实现逻辑
+
+#### 2.3.1 架构层次
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        JS Application                        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     NAPI Layer (JS绑定)                      │
+│  napi_cert_chain_validator.cpp                              │
+│  napi_x509_cert_chain_validate_params.cpp                   │
+│  napi_x509_cert_chain_validate_result.cpp                   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Core Layer (核心框架)                     │
+│  cert_chain_validator.c - 验证器创建和分发                   │
+│  cert_chain_validator_spi.h - SPI接口定义                    │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Adapter Layer (OpenSSL适配)                 │
+│  x509_cert_chain_validator_openssl.c                        │
+│  - BuildAndVerifyCertChain() 核心验证+下载逻辑               │
+│  - GetDownloadedCertFromAIAWithRetry() AIA下载              │
+│  - DownloadCertificateFromUrlWithResult() HTTP下载           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    OpenSSL Library                          │
+│  X509_verify_cert(), X509_load_http(), etc.                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 2.3.2 AIA下载中间证书流程
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    BuildAndVerifyCertChain()                      │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │ 初始化remainingCount=6 │
+                    └───────────────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────┐
+                │ remainingCount > 0 ?           │
+                └───────────────────────────────┘
+                    │ Yes                │ No
+                    ▼                    ▼
+        ┌─────────────────────┐    ┌──────────────────────┐
+        │ 创建验证上下文       │    │ 返回超出最大下载次数  │
+        │ X509_STORE_CTX_new  │    └──────────────────────┘
+        └─────────────────────┘
+                    │
+                    ▼
+        ┌─────────────────────┐
+        │ X509_verify_cert()  │
+        └─────────────────────┘
+                    │
+                    ▼
+            ┌───────────────┐
+            │ 验证成功？     │
+            └───────────────┘
+            │ Yes       │ No
+            ▼           ▼
+    ┌───────────────┐  ┌───────────────────────────────────┐
+    │ 返回成功      │  │ 获取错误码                         │
+    │ certChain     │  │ X509_STORE_CTX_get_error()         │
+    └───────────────┘  └───────────────────────────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────────┐
+                │ 错误码 == UNABLE_TO_GET_ISSUER ?  │
+                └───────────────────────────────────┘
+                    │ Yes                    │ No
+                    ▼                        ▼
+        ┌───────────────────────┐   ┌───────────────────┐
+        │ allowDownloadIntermediate│ │ 返回对应错误      │
+        │ Ca == true ?           │   └───────────────────┘
+        └───────────────────────┘
+            │ Yes        │ No
+            ▼            ▼
+┌─────────────────────────────┐  ┌───────────────────────┐
+│ 获取当前链最后一个证书       │  │ 返回缺少颁发者证书    │
+│ lastCert                    │  └───────────────────────┘
+└─────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────┐
+│           GetDownloadedCertFromAIAWithRetry()               │
+│  1. 获取证书的AIA扩展 (X509_get_ext_d2i)                     │
+│  2. 遍历ACCESS_DESCRIPTION寻找caIssuers类型                 │
+│  3. 调用TryDownloadFromAccessDescriptionWithRetry           │
+└─────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────┐
+│        TryDownloadFromAccessDescriptionWithRetry()          │
+│  1. 检查method是否为NID_ad_ca_issuers                       │
+│  2. 检查location是否为URI类型                                │
+│  3. 提取URL字符串                                            │
+│  4. 循环调用DownloadCertificateFromUrlWithResult            │
+│     (最多2次，直到remainingCount耗尽)                        │
+└─────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────┐
+│          DownloadCertificateFromUrlWithResult()             │
+│  调用X509_load_http(url, NULL, NULL, 5秒超时)               │
+│  检测超时错误码:                                             │
+│    - BIO_R_CONNECT_TIMEOUT                                  │
+│    - BIO_R_TRANSFER_TIMEOUT                                 │
+└─────────────────────────────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────┐
+    │ 下载结果判断       │
+    └───────────────────┘
+    │ SUCCESS    │ TIMEOUT    │ FAILED
+    ▼            ▼            ▼
+┌─────────┐  ┌─────────┐  ┌─────────┐
+│返回证书 │  │返回超时 │  │返回失败 │
+└─────────┘  └─────────┘  └─────────┘
+```
+
+#### 2.3.3 关键常量定义
+
+```c
+#define MAX_TOTAL_DOWNLOAD_COUNT 6    // 总下载次数限制（防DoS）
+#define MAX_AIA_URL_RETRY_COUNT 2     // 每个URL重试次数
+#define DOWNLOAD_TIMEOUT_SECONDS 5    // 下载超时时间（秒）
+```
+
+#### 2.3.4 下载结果枚举
+
+```c
+typedef enum {
+    DOWNLOAD_RESULT_SUCCESS,   // 下载成功
+    DOWNLOAD_RESULT_FAILED,    // 下载失败
+    DOWNLOAD_RESULT_TIMEOUT    // 下载超时
+} DownloadResult;
+```
+
+#### 2.3.5 超时检测实现
+
+```c
+static DownloadResult DownloadCertificateFromUrlWithResult(const char *url, X509 **cert)
+{
+    // 使用5秒超时下载证书
+    *cert = X509_load_http(url, NULL, NULL, DOWNLOAD_TIMEOUT_SECONDS);
+    if (*cert == NULL) {
+        // 使用ERR_peek_error()获取错误码（不移除错误队列）
+        unsigned long err = ERR_peek_error();
+        int reason = ERR_GET_REASON(err);
+
+        // 检测超时错误
+        if (reason == BIO_R_CONNECT_TIMEOUT || reason == BIO_R_TRANSFER_TIMEOUT) {
+            LOGE("Download certificate timeout from URL: %s", url);
+            ERR_clear_error();
+            return DOWNLOAD_RESULT_TIMEOUT;
+        }
+
+        LOGE("Failed to download certificate from URL: %s", url);
+        CfPrintOpensslError();
+        return DOWNLOAD_RESULT_FAILED;
+    }
+    return DOWNLOAD_RESULT_SUCCESS;
+}
+```
+
+#### 2.3.6 内存管理
+
+- 下载的证书通过 `sk_X509_push()` 添加到 `untrustedCertStack`
+- 所有证书在 `FreeOpenSSLParams()` 中通过 `sk_X509_pop_free()` 统一释放
+- 使用 `ERR_peek_error()` 而非 `ERR_get_error()` 避免影响错误队列
+- 超时后调用 `ERR_clear_error()` 清除错误队列
+
+#### 2.3.7 安全考虑
+
+1. **DoS防护**：总下载次数限制为6次，防止单次验证占用过多资源
+2. **超时控制**：每次下载5秒超时，避免长时间阻塞
+3. **错误传播**：超时错误立即返回，不继续重试
+4. **参数控制**：默认不启用自动下载，需显式设置 `allowDownloadIntermediateCa: true`
+
+---
+
+## 附录
+
+### A. 文件清单
+
+| 文件路径 | 修改行数 | 说明 |
+|---------|---------|------|
+| `frameworks/adapter/v1.0/src/x509_cert_chain_validator_openssl.c` | +613 | OpenSSL适配层，核心实现 |
+| `frameworks/core/v1.0/certificate/cert_chain_validator.c` | +20 | 验证器创建 |
+| `frameworks/core/v1.0/spi/cert_chain_validator_spi.h` | +5 | SPI接口定义 |
+| `frameworks/js/napi/certificate/src/napi_cert_chain_validator.cpp` | +156 | NAPI接口实现 |
+| `frameworks/js/napi/certificate/src/napi_x509_cert_chain_validate_params.cpp` | +643 | 参数解析 |
+| `frameworks/js/napi/certificate/src/napi_x509_cert_chain_validate_result.cpp` | +57 | 结果构建 |
+| `frameworks/js/napi/certificate/inc/napi_cert_defines.h` | +39 | NAPI常量定义 |
+| `interfaces/inner_api/certificate/cert_chain_validator.h` | +83 | Inner API接口定义 |
+| `interfaces/inner_api/common/cf_result.h` | +35 | 错误码定义 |
+| `interfaces/inner_api/include/cf_type.h` | +15 | 类型定义 |
+
+### B. 参考标准
+
+- RFC 5280: Internet X.509 Public Key Infrastructure Certificate and CRL Profile
+- RFC 4325: Internet X.509 Public Key Infrastructure Authority Information Access Certificate Extension
+- RFC 5246: The Transport Layer Security (TLS) Protocol Version 1.2

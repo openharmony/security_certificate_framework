@@ -31,6 +31,8 @@ constexpr int32_t PARAM2 = 2;
 constexpr uint32_t BYTE_TO_BIT_CNT = 8;
 constexpr uint32_t QUAD_WORD_ALIGN_UP = 3;
 constexpr uint32_t MAX_LEN_OF_ARRAY = 1024;
+constexpr uint32_t MAX_NAPI_STRING_LEN = 2048;
+constexpr uint32_t MAX_NAPI_BLOB_LEN = 2048;
 
 const std::string CERT_TAG_DATA = "data";
 const std::string CERT_TAG_ERR_CODE = "code";
@@ -58,7 +60,23 @@ enum ResultCode {
     JS_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY = 19030005,
     JS_ERR_KEYUSAGE_NO_CERTSIGN = 19030006,
     JS_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE = 19030007,
-    JS_ERR_CERT_INVALID_PRIVATE_KEY = 19030008
+    JS_ERR_CERT_INVALID_PRIVATE_KEY = 19030008,
+    JS_ERR_CERT_UNTRUSTED = 19030009,
+    JS_ERR_CERT_REVOKED = 19030010,
+    JS_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION = 19030011,
+    JS_ERR_CERT_HOST_NAME_MISMATCH = 19030012,
+    JS_ERR_CERT_EMAIL_MISMATCH = 19030013,
+    JS_ERR_CERT_KEY_USAGE_MISMATCH = 19030014,
+    JS_ERR_CRL_NOT_FOUND = 19030015,
+    JS_ERR_CRL_NOT_YET_VALID = 19030016,
+    JS_ERR_CRL_HAS_EXPIRED = 19030017,
+    JS_ERR_CRL_SIGNATURE_FAILURE = 19030018,
+    JS_ERR_UNABLE_TO_GET_CRL_ISSUER = 19030019,
+    JS_ERR_OCSP_RESPONSE_NOT_FOUND = 19030020,
+    JS_ERR_OCSP_RESPONSE_INVALID = 19030021,
+    JS_ERR_OCSP_SIGNATURE_FAILURE = 19030022,
+    JS_ERR_OCSP_CERT_STATUS_UNKNOWN = 19030023,
+    JS_ERR_NETWORK_TIMEOUT = 19030024,
 };
 
 enum AsyncType { ASYNC_TYPE_CALLBACK = 1, ASYNC_TYPE_PROMISE = 2 };
@@ -138,9 +156,29 @@ const std::string CERT_CHAIN_VALIDATE_TAG_SSLHOSTNAME = "sslHostname";
 const std::string CERT_CHAIN_VALIDATE_TAG_KEYUSAGE = "keyUsage";
 const std::string CERT_CHAIN_VALIDATE_TAG_TRUST_SYSTEM_CA = "trustSystemCa";
 const std::string CERT_CHAIN_VALIDATE_TAG_ALLOW_DOWNLOAD_INTERMEDIATE_CA = "allowDownloadIntermediateCa";
+// X509CertValidatorParams
+const std::string CERT_VALIDATOR_TAG_TRUSTED_CERTS = "trustedCerts";
+const std::string CERT_VALIDATOR_TAG_UNTRUSTED_CERTS = "untrustedCerts";
+const std::string CERT_VALIDATOR_TAG_PARTIAL_CHAIN = "partialChain";
+const std::string CERT_VALIDATOR_TAG_VALIDATE_DATE = "validateDate";
+const std::string CERT_VALIDATOR_TAG_IGNORE_ERRS = "ignoreErrs";
+const std::string CERT_VALIDATOR_TAG_HOSTNAMES = "hostnames";
+const std::string CERT_VALIDATOR_TAG_EMAIL_ADDRESSES = "emailAddresses";
+const std::string CERT_VALIDATOR_TAG_KEY_USAGE = "keyUsage";
+const std::string CERT_VALIDATOR_TAG_USER_ID = "userId";
+const std::string CERT_VALIDATOR_TAG_REVOKED_PARAMS = "revokedParams";
+// X509CertRevokedParams
+const std::string CERT_REVOKED_TAG_REVOCATION_FLAGS = "revocationFlags";
+const std::string CERT_REVOKED_TAG_CRLS = "crls";
+const std::string CERT_REVOKED_TAG_ALLOW_DOWNLOAD_CRL = "allowDownloadCrl";
+const std::string CERT_REVOKED_TAG_OCSP_RESPONSES = "ocspResponses";
+const std::string CERT_REVOKED_TAG_ALLOW_OCSP_CHECK_ONLINE = "allowOcspCheckOnline";
+const std::string CERT_REVOKED_TAG_OCSP_DIGEST = "ocspDigest";
 // CertChainValidateResult
 const std::string CERT_CHAIN_VALIDATE_RESULT_TAG_TRUSTANCHOR = "trustAnchor";
 const std::string CERT_CHAIN_VALIDATE_RESULT_TAG_X509CERT = "entityCert";
+// VerifyCertResult
+const std::string VERIFY_CERT_RESULT_TAG_CERTCHAIN = "certChain";
 
 const std::string CERT_CHAIN_BUILD_RESULT_TAG_CERTCHAIN = "certChain";
 const std::string CERT_CHAIN_BUILD_RESULT_TAG_VALIDATERESULT = "validationResult";

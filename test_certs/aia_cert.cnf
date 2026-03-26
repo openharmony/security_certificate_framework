@@ -1,0 +1,13 @@
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = Test Cert with AIA
+O = Test Org
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature
+authorityInfoAccess = OCSP;URI:http://ocsp.example.com,CA Issuers;URI:http://nonexistent.example.com/ca.crt

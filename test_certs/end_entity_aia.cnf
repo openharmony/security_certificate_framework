@@ -1,0 +1,15 @@
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = US
+O = Test Org
+CN = End Entity with AIA
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+authorityInfoAccess = OCSP;URI:http://ocsp.example.com,CA Issuers;URI:http://nonexistent.local:9999/intermediate_ca.pem

@@ -15,15 +15,20 @@
 
 #include "napi_x509_cert_chain_validate_params.h"
 
+#include <securec.h>
+
 #include "cf_log.h"
 #include "cf_memory.h"
+#include "cf_result.h"
 #include "cf_type.h"
 #include "napi/native_api.h"
 #include "napi/native_common.h"
 #include "napi_cert_crl_collection.h"
 #include "napi_cert_defines.h"
 #include "napi_cert_utils.h"
+#include "napi_common.h"
 #include "napi_object.h"
+#include "napi_x509_crl.h"
 #include "napi_x509_trust_anchor.h"
 #include "napi_x509_certificate.h"
 #include "utils.h"
@@ -121,6 +126,25 @@ static bool GetX509TrustAnchorArray(napi_env env, napi_value arg, bool isTrustSy
     return true;
 }
 
+static bool GetCertCRLCollectionElement(napi_env env, napi_value obj, uint32_t index,
+    HcfCertCrlCollection **collection)
+{
+    napi_value element;
+    napi_status status = napi_get_element(env, obj, index, &element);
+    if (status != napi_ok) {
+        LOGE("get element failed!");
+        return false;
+    }
+    NapiCertCRLCollection *napiCertCrlCollectionObj = nullptr;
+    napi_unwrap(env, element, reinterpret_cast<void **>(&napiCertCrlCollectionObj));
+    if (napiCertCrlCollectionObj == nullptr) {
+        LOGE("napi cert crl collection object is nullptr!");
+        return false;
+    }
+    *collection = napiCertCrlCollectionObj->GetCertCrlCollection();
+    return true;
+}
+
 static bool GetCertCRLCollectionArray(napi_env env, napi_value arg, HcfCertCRLCollectionArray *&out)
 {
     napi_value obj = GetProp(env, arg, CERT_CHAIN_VALIDATE_TAG_CERTCRLS.c_str());
@@ -149,29 +173,31 @@ static bool GetCertCRLCollectionArray(napi_env env, napi_value arg, HcfCertCRLCo
         return false;
     }
     for (uint32_t i = 0; i < length; i++) {
-        napi_value element;
-        napi_status status = napi_get_element(env, obj, i, &element);
-        if (status != napi_ok) {
-            LOGE("get element failed!");
+        if (!GetCertCRLCollectionElement(env, obj, i, &out->data[i])) {
             CfFree(out->data);
             out->data = nullptr;
             CfFree(out);
             out = nullptr;
             return false;
         }
-        NapiCertCRLCollection *napiCertCrlCollectionObj = nullptr;
-        napi_unwrap(env, element, reinterpret_cast<void **>(&napiCertCrlCollectionObj));
-        if (napiCertCrlCollectionObj == nullptr) {
-            LOGE("napi cert crl collection object is nullptr!");
-            CfFree(out->data);
-            out->data = nullptr;
-            CfFree(out);
-            out = nullptr;
-            return false;
-        }
-        out->data[i] = napiCertCrlCollectionObj->GetCertCrlCollection();
     }
     return true;
+}
+
+static bool IsRevocationOptionValid(HcfRevChkOption option)
+{
+    switch (option) {
+        case REVOCATION_CHECK_OPTION_PREFER_OCSP:
+        case REVOCATION_CHECK_OPTION_ACCESS_NETWORK:
+        case REVOCATION_CHECK_OPTION_FALLBACK_NO_PREFER:
+        case REVOCATION_CHECK_OPTION_FALLBACK_LOCAL:
+        case REVOCATION_CHECK_OPTION_CHECK_INTERMEDIATE_CA_ONLINE:
+        case REVOCATION_CHECK_OPTION_LOCAL_CRL_ONLY_CHECK_END_ENTITY_CERT:
+        case REVOCATION_CHECK_OPTION_IGNORE_NETWORK_ERROR:
+            return true;
+        default:
+            return false;
+    }
 }
 
 static bool GetRevocationOptions(napi_env env, napi_value rckObj, HcfRevocationCheckParam *&out)
@@ -209,19 +235,10 @@ static bool GetRevocationOptions(napi_env env, napi_value rckObj, HcfRevocationC
             CF_FREE_PTR(out->options);
             return false;
         }
-        switch (out->options->data[i]) {
-            case REVOCATION_CHECK_OPTION_PREFER_OCSP:
-            case REVOCATION_CHECK_OPTION_ACCESS_NETWORK:
-            case REVOCATION_CHECK_OPTION_FALLBACK_NO_PREFER:
-            case REVOCATION_CHECK_OPTION_FALLBACK_LOCAL:
-            case REVOCATION_CHECK_OPTION_CHECK_INTERMEDIATE_CA_ONLINE:
-            case REVOCATION_CHECK_OPTION_LOCAL_CRL_ONLY_CHECK_END_ENTITY_CERT:
-            case REVOCATION_CHECK_OPTION_IGNORE_NETWORK_ERROR:
-                break;
-            default:
-                CF_FREE_PTR(out->options->data);
-                CF_FREE_PTR(out->options);
-                return false;
+        if (!IsRevocationOptionValid(out->options->data[i])) {
+            CF_FREE_PTR(out->options->data);
+            CF_FREE_PTR(out->options);
+            return false;
         }
     }
     return true;
@@ -561,6 +578,325 @@ bool BuildX509CertChainValidateParams(napi_env env, napi_value arg, HcfX509CertC
         return false;
     }
     return true;
+}
+
+static CfResult GetCertArrayFromNapiValue(napi_env env, napi_value arg, const char *name, HcfX509CertificateArray &value)
+{
+    napi_value obj = nullptr;
+    uint32_t length = 0;
+    CfResult ret = NapiGetArrayBaseInfo(env, arg, name, obj, length, MAX_LEN_OF_ARRAY);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    HcfX509CertificateArray out = {};
+    out.count = length;
+    out.data = static_cast<HcfX509Certificate **>(CfMallocEx(length * sizeof(HcfX509Certificate *)));
+    if (out.data == nullptr) {
+        LOGE("Failed to allocate out memory, size: %{public}zu!", length * sizeof(HcfX509Certificate *));
+        return CF_ERR_MALLOC;
+    }
+
+    for (uint32_t i = 0; i < length; ++i) {
+        napi_value element;
+        if (napi_get_element(env, obj, i, &element) != napi_ok) {
+            LOGE("get element failed!");
+            CfFree(out.data);
+            return CF_ERR_NAPI;
+        }
+
+        NapiX509Certificate *napiCert = nullptr;
+        if (napi_unwrap(env, element, reinterpret_cast<void **>(&napiCert)) != napi_ok) {
+            LOGE("unwrap napi certificate object failed!");
+            CfFree(out.data);
+            return CF_ERR_NAPI;
+        }
+        if (napiCert == nullptr) {
+            LOGE("napi certificate object is nullptr!");
+            CfFree(out.data);
+            return CF_INVALID_PARAMS;
+        }
+        out.data[i] = napiCert->GetX509Cert();
+    }
+
+    value = out;
+    return CF_SUCCESS;
+}
+
+static CfResult GetCrlArrayFromNapiValue(napi_env env, napi_value arg, const char *name, HcfX509CrlArray &value)
+{
+    napi_value obj = nullptr;
+    uint32_t length = 0;
+    CfResult ret = NapiGetArrayBaseInfo(env, arg, name, obj, length, MAX_LEN_OF_ARRAY);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    HcfX509CrlArray out = { 0 };
+    out.data = static_cast<HcfX509Crl **>(CfMallocEx(length * sizeof(HcfX509Crl *)));
+    if (out.data == nullptr) {
+        LOGE("Failed to allocate out memory, size: %{public}zu!", length * sizeof(HcfX509Crl *));
+        return CF_ERR_MALLOC;
+    }
+    out.count = length;
+
+    for (uint32_t i = 0; i < length; ++i) {
+        napi_value element;
+        if (napi_get_element(env, obj, i, &element) != napi_ok) {
+            LOGE("get element failed!");
+            CfFree(out.data);
+            out.data = nullptr;
+            out.count = 0;
+            return CF_ERR_NAPI;
+        }
+
+        NapiX509Crl *napiCrl = nullptr;
+        if (napi_unwrap(env, element, reinterpret_cast<void **>(&napiCrl)) != napi_ok) {
+            LOGE("unwrap napi CRL object failed!");
+            CfFree(out.data);
+            out.data = nullptr;
+            out.count = 0;
+            return CF_ERR_NAPI;
+        }
+        if (napiCrl == nullptr) {
+            LOGE("napi CRL object is nullptr!");
+            CfFree(out.data);
+            out.data = nullptr;
+            out.count = 0;
+            return CF_INVALID_PARAMS;
+        }
+        out.data[i] = napiCrl->GetX509Crl();
+    }
+
+    value = out;
+    return CF_SUCCESS;
+}
+
+static CfResult GetRevokedParamsFields(napi_env env, napi_value obj, HcfX509CertRevokedParams *param)
+{
+    CfResult ret = NapiGetInt32Array(env, obj, CERT_REVOKED_TAG_REVOCATION_FLAGS.c_str(),
+        param->revocationFlags);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get revocation flags failed");
+        return ret;
+    }
+
+    ret = GetCrlArrayFromNapiValue(env, obj, CERT_REVOKED_TAG_CRLS.c_str(), param->crls);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get crls failed");
+        return ret;
+    }
+
+    ret = NapiGetBoolValue(env, obj, CERT_REVOKED_TAG_ALLOW_DOWNLOAD_CRL.c_str(),
+        param->allowDownloadCrl);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get allow download crl failed");
+        return ret;
+    }
+
+    ret = NapiGetBoolValue(env, obj, CERT_REVOKED_TAG_ALLOW_OCSP_CHECK_ONLINE.c_str(),
+        param->allowOcspCheckOnline);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get allow ocsp check online failed");
+        return ret;
+    }
+
+    ret = NapiGetInt32Ex(env, obj, CERT_REVOKED_TAG_OCSP_DIGEST.c_str(), param->ocspDigest);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get ocsp digest failed");
+        return ret;
+    }
+
+    ret = NapiGetBlobArray(env, obj, CERT_REVOKED_TAG_OCSP_RESPONSES.c_str(),
+        param->ocspResponses);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get ocsp responses failed!");
+        return ret;
+    }
+    return CF_SUCCESS;
+}
+
+static CfResult BuildX509CertRevokedParams(napi_env env, napi_value arg, HcfX509CertRevokedParams *&param)
+{
+    napi_value revokedParamsObj = nullptr;
+    CfResult ret = NapiGetProperty(env, arg, CERT_VALIDATOR_TAG_REVOKED_PARAMS.c_str(), false, revokedParamsObj);
+    if (ret != CF_SUCCESS || revokedParamsObj == nullptr) {
+        return ret;
+    }
+
+    param = static_cast<HcfX509CertRevokedParams *>(CfMallocEx(sizeof(HcfX509CertRevokedParams)));
+    if (param == nullptr) {
+        LOGE("Failed to allocate revoked params memory!");
+        return CF_ERR_MALLOC;
+    }
+
+    ret = GetRevokedParamsFields(env, revokedParamsObj, param);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        CfFree(param);
+        param = nullptr;
+        return ret;
+    }
+    return CF_SUCCESS;
+}
+
+
+static CfResult GetBoolParams(napi_env env, napi_value arg, HcfX509CertValidatorParams &param)
+{
+    CfResult ret = NapiGetBoolValue(env, arg, CERT_CHAIN_VALIDATE_TAG_TRUST_SYSTEM_CA.c_str(),
+        param.trustSystemCa);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get trust system ca failed!");
+        return ret;
+    }
+
+    ret = NapiGetBoolValue(env, arg, CERT_VALIDATOR_TAG_PARTIAL_CHAIN.c_str(), param.partialChain);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get partial chain failed!");
+        return ret;
+    }
+
+    ret = NapiGetBoolValue(env, arg, CERT_CHAIN_VALIDATE_TAG_ALLOW_DOWNLOAD_INTERMEDIATE_CA.c_str(),
+        param.allowDownloadIntermediateCa);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get allow download intermediate ca failed!");
+        return ret;
+    }
+
+    ret = NapiGetBoolValue(env, arg, CERT_VALIDATOR_TAG_VALIDATE_DATE.c_str(), param.validateDate);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get validate date failed!");
+        return ret;
+    }
+    return CF_SUCCESS;
+}
+
+static CfResult GetArrayParams(napi_env env, napi_value arg, HcfX509CertValidatorParams &param)
+{
+    CfResult ret = GetCertArrayFromNapiValue(env, arg, CERT_VALIDATOR_TAG_TRUSTED_CERTS.c_str(), param.trustedCerts);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get trusted certs failed");
+        return ret;
+    }
+
+    ret = GetCertArrayFromNapiValue(env, arg, CERT_VALIDATOR_TAG_UNTRUSTED_CERTS.c_str(), param.untrustedCerts);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get untrusted certs failed");
+        return ret;
+    }
+
+    ret = NapiGetInt32Array(env, arg, CERT_VALIDATOR_TAG_IGNORE_ERRS.c_str(), param.ignoreErrs);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get ignore errs failed");
+        return ret;
+    }
+
+    ret = NapiGetStringArray(env, arg, CERT_VALIDATOR_TAG_HOSTNAMES.c_str(), param.hostnames);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get hostnames failed");
+        return ret;
+    }
+
+    ret = NapiGetStringArray(env, arg, CERT_VALIDATOR_TAG_EMAIL_ADDRESSES.c_str(), param.emailAddresses);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get email addresses failed");
+        return ret;
+    }
+
+    ret = NapiGetInt32Array(env, arg, CERT_VALIDATOR_TAG_KEY_USAGE.c_str(), param.keyUsage);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get key usage failed");
+        return ret;
+    }
+
+    ret = NapiGetBlobValue(env, arg, CERT_VALIDATOR_TAG_USER_ID.c_str(), param.userId);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get user id failed");
+        return ret;
+    }
+    return CF_SUCCESS;
+}
+
+static CfResult BuildX509BaseVerifyParams(napi_env env, napi_value arg, HcfX509CertValidatorParams &param)
+{
+    CfResult ret = GetBoolParams(env, arg, param);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        return ret;
+    }
+
+    ret = NapiGetStringValue(env, arg, CERT_CHAIN_VALIDATE_TAG_DATE.c_str(), param.date);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Get date failed!");
+        return ret;
+    }
+
+    ret = GetArrayParams(env, arg, param);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        return ret;
+    }
+
+    return CF_SUCCESS;
+}
+
+CfResult BuildX509CertValidatorParams(napi_env env, napi_value arg, HcfX509CertValidatorParams &param)
+{
+    CfResult ret = CF_SUCCESS;
+    napi_valuetype type;
+    if (napi_typeof(env, arg, &type) != napi_ok) {
+        LOGE("get argument type failed!");
+        return CF_ERR_NAPI;
+    }
+    if (type != napi_object) {
+        LOGE("wrong argument type. expect object type.");
+        return CF_INVALID_PARAMS;
+    }
+
+    (void)memset_s(&param, sizeof(HcfX509CertValidatorParams), 0, sizeof(HcfX509CertValidatorParams));
+
+    ret = BuildX509BaseVerifyParams(env, arg, param);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Build base verify params failed!");
+        FreeX509CertValidatorParams(param);
+        return ret;
+    }
+
+    ret = BuildX509CertRevokedParams(env, arg, param.revokedParams);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        LOGE("Build revoked params failed!");
+        FreeX509CertValidatorParams(param);
+        return ret;
+    }
+
+    return CF_SUCCESS;
+}
+
+
+static void FreeX509CertRevokedParams(HcfX509CertRevokedParams *&param)
+{
+    if (param == nullptr) {
+        return;
+    }
+
+    CfFree(param->revocationFlags.data);
+    CfFree(param->crls.data);
+    FreeCfBlobArray(param->ocspResponses.data, param->ocspResponses.count);
+    CfFree(param);
+
+    param = nullptr;
+}
+
+void FreeX509CertValidatorParams(HcfX509CertValidatorParams &param)
+{
+    CfFree(param.untrustedCerts.data);
+    CfFree(param.trustedCerts.data);
+    CfFree(param.date);
+    CfFree(param.ignoreErrs.data);
+    NapiFreeStringArray(param.hostnames);
+    NapiFreeStringArray(param.emailAddresses);
+    CfFree(param.keyUsage.data);
+    CfBlobDataFree(&param.userId);
+    FreeX509CertRevokedParams(param.revokedParams);
+
+    (void)memset_s(&param, sizeof(HcfX509CertValidatorParams), 0, sizeof(HcfX509CertValidatorParams));
 }
 
 } // namespace CertFramework
