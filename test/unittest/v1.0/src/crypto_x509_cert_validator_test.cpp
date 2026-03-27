@@ -17,6 +17,7 @@
 #include <securec.h>
 #include <string>
 #include <openssl/bio.h>
+#include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 
@@ -7156,6 +7157,1699 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Params_InvalidRevocationF
 
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
     EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_CrlDownload_InvalidUrl_001
+ * @tc.desc: Test CRL download with invalid URL (not http/https)
+ *           When CDP URL is ftp:// or other protocol, expect CF_ERR_CRL_NOT_FOUND
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_CrlDownload_InvalidUrl_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testEndEntityForCdp);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testRootCaForCdp);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testIntermediateCaWithCdp);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = true;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_get_ext_d2i(_, _, _, _))
+        .WillRepeatedly(Invoke([](const X509 *x, int nid, int *crit, int *idx) -> void * {
+            if (nid == NID_crl_distribution_points) {
+                static const char *invalidUrl = "ftp://invalid.example.com/crl.crl";
+                GENERAL_NAME *genName = GENERAL_NAME_new();
+                genName->type = GEN_URI;
+                genName->d.uniformResourceIdentifier = ASN1_IA5STRING_new();
+                ASN1_STRING_set(genName->d.uniformResourceIdentifier, invalidUrl, strlen(invalidUrl));
+                
+                STACK_OF(GENERAL_NAME) *names = sk_GENERAL_NAME_new_null();
+                sk_GENERAL_NAME_push(names, genName);
+                
+                DIST_POINT_NAME *dpn = DIST_POINT_NAME_new();
+                dpn->type = 0;
+                dpn->name.fullname = names;
+                
+                DIST_POINT *dp = DIST_POINT_new();
+                dp->distpoint = dpn;
+                
+                STACK_OF(DIST_POINT) *crldp = sk_DIST_POINT_new_null();
+                sk_DIST_POINT_push(crldp, dp);
+                return crldp;
+            }
+            return nullptr;
+        }));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    if (res != CF_SUCCESS) {
+        CF_LOG_I("ValidateX509Cert_CrlDownload_InvalidUrl_001 failed: res=%d, errorMsg=%s", res,
+                 result.errorMsg ? result.errorMsg : "null");
+    }
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_ValidateDate_001
+ * @tc.desc: Test validateDate parameter with date string
+ *           When validateDate is true and date is provided, expect proper date validation
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_ValidateDate_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testEndEntityCert);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testRootCaCert);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testIntermediateCaCert);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = true;
+    const char *dateStr = "20260101000000Z";
+    params.date = static_cast<char *>(CfMalloc(strlen(dateStr) + 1, 0));
+    ASSERT_NE(params.date, nullptr);
+    strcpy(params.date, dateStr);
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    if (res != CF_SUCCESS) {
+        CF_LOG_I("ValidateX509Cert_ValidateDate_001 failed: res=%d, errorMsg=%s", res,
+                 result.errorMsg ? result.errorMsg : "null");
+    }
+    EXPECT_EQ(res, CF_ERR_CERT_HAS_EXPIRED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_CrlCheck_WithLocalCrl_001
+ * @tc.desc: Test CRL check with local CRL provided
+ *           When CRL is provided via crls parameter, expect proper CRL validation
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_CrlCheck_WithLocalCrl_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = false;
+
+    CfEncodingBlob crlStream = { reinterpret_cast<uint8_t *>(const_cast<char *>(g_testCertChainPemMidCRL)),
+        sizeof(g_testCertChainPemMidCRL), CF_FORMAT_PEM };
+    HcfX509Crl *crl = nullptr;
+    CfResult ret = HcfX509CrlCreate(&crlStream, &crl);
+    ASSERT_EQ(ret, CF_SUCCESS);
+    ASSERT_NE(crl, nullptr);
+
+    params.revokedParams->crls.count = 1;
+    params.revokedParams->crls.data = static_cast<HcfX509Crl **>(
+        CfMalloc(sizeof(HcfX509Crl *), 0));
+    ASSERT_NE(params.revokedParams->crls.data, nullptr);
+    params.revokedParams->crls.data[0] = crl;
+
+    HcfVerifyCertResult result = {};
+
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    if (res != CF_SUCCESS) {
+        CF_LOG_I("ValidateX509Cert_CrlCheck_WithLocalCrl_001 failed: res=%d, errorMsg=%s", res,
+                 result.errorMsg ? result.errorMsg : "null");
+    }
+    EXPECT_EQ(res, CF_ERR_CERT_REVOKED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_ValidateDate_NoDateParam_001
+ * @tc.desc: Test validateDate=true with no date parameter
+ *           When validateDate is true but date is NULL, should use current time
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_ValidateDate_NoDateParam_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testEndEntityCert);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testRootCaCert);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testIntermediateCaCert);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = true;
+    params.date = nullptr;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    if (res != CF_SUCCESS) {
+        CF_LOG_I("ValidateX509Cert_ValidateDate_NoDateParam_001 failed: res=%d, errorMsg=%s", res,
+                 result.errorMsg ? result.errorMsg : "null");
+    }
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_FullCheck_Success_001
+ * @tc.desc: Test with all checks enabled and valid cert chain
+ *           All validation passes, expect CF_SUCCESS
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_FullCheck_Success_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+    params.allowDownloadIntermediateCa = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    EXPECT_EQ(res, CF_SUCCESS);
+    EXPECT_NE(result.certs.count, 0);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_STORE_CTX_new_Fail_001
+ * @tc.desc: Mock X509_STORE_CTX_new returns NULL
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_STORE_CTX_new_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_new())
+        .WillOnce(Return(nullptr));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_STORE_new_Fail_001
+ * @tc.desc: Mock X509_STORE_new returns NULL
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_STORE_new_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_new())
+        .WillOnce(Return(nullptr));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_STORE_CTX_init_Fail_001
+ * @tc.desc: Mock X509_STORE_CTX_init returns 0
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_STORE_CTX_init_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_init(_, _, _, _))
+        .WillOnce(Return(0));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_001
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CERT_HAS_EXPIRED
+ *           Expect CF_ERR_CERT_HAS_EXPIRED
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CERT_HAS_EXPIRED));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_HAS_EXPIRED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_002
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CERT_NOT_YET_VALID
+ *           Expect CF_ERR_CERT_NOT_YET_VALID
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_002, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CERT_NOT_YET_VALID));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_NOT_YET_VALID);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_003
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CERT_SIGNATURE_FAILURE
+ *           Expect CF_ERR_CERT_SIGNATURE_FAILURE
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_003, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CERT_SIGNATURE_FAILURE));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_SIGNATURE_FAILURE);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_004
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
+ *           Expect CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_004, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_STORE_add_cert_Fail_001
+ * @tc.desc: Mock X509_STORE_add_cert returns 0
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_STORE_add_cert_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_add_cert(_, _))
+        .WillOnce(Return(0));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_sk_X509_push_Fail_001
+ * @tc.desc: Mock sk_X509_push returns 0
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_sk_X509_push_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), OPENSSL_sk_push(_, _))
+        .WillOnce(Return(0));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_005
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CERT_UNTRUSTED
+ *           Expect CF_ERR_CERT_UNTRUSTED
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_005, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CERT_UNTRUSTED));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_UNTRUSTED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_006
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_INVALID_CA
+ *           Expect CF_ERR_KEYUSAGE_NO_CERTSIGN
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_006, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_INVALID_CA));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_KEYUSAGE_NO_CERTSIGN);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_007
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_KEYUSAGE_NO_CERTSIGN
+ *           Expect CF_ERR_KEYUSAGE_NO_CERTSIGN
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_007, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_KEYUSAGE_NO_CERTSIGN));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_KEYUSAGE_NO_CERTSIGN);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_008
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE
+ *           Expect CF_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_008, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_009
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN
+ *           Expect CF_ERR_CERT_UNTRUSTED
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_009, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_UNTRUSTED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_010
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT
+ *           Expect CF_ERR_CERT_UNTRUSTED
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_010, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_UNTRUSTED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_verify_cert_Fail_011
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION
+ *           Expect CF_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_verify_cert_Fail_011, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_CrlError_001
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CRL_HAS_EXPIRED
+ *           Expect CF_ERR_CRL_HAS_EXPIRED
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_CrlError_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = false;
+
+    HcfX509Crl *crl = nullptr;
+    CfEncodingBlob crlStream = { reinterpret_cast<uint8_t *>(const_cast<char *>(g_testCertChainPemMidCRL)),
+        sizeof(g_testCertChainPemMidCRL), CF_FORMAT_PEM };
+    CfResult ret = HcfX509CrlCreate(&crlStream, &crl);
+    ASSERT_EQ(ret, CF_SUCCESS);
+    ASSERT_NE(crl, nullptr);
+
+    params.revokedParams->crls.count = 1;
+    params.revokedParams->crls.data = static_cast<HcfX509Crl **>(
+        CfMalloc(sizeof(HcfX509Crl *), 0));
+    ASSERT_NE(params.revokedParams->crls.data, nullptr);
+    params.revokedParams->crls.data[0] = crl;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CRL_HAS_EXPIRED));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRL_HAS_EXPIRED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_CrlError_002
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CRL_NOT_YET_VALID
+ *           Expect CF_ERR_CRL_NOT_YET_VALID
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_CrlError_002, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = false;
+
+    HcfX509Crl *crl = nullptr;
+    CfEncodingBlob crlStream = { reinterpret_cast<uint8_t *>(const_cast<char *>(g_testCertChainPemMidCRL)),
+        sizeof(g_testCertChainPemMidCRL), CF_FORMAT_PEM };
+    CfResult ret = HcfX509CrlCreate(&crlStream, &crl);
+    ASSERT_EQ(ret, CF_SUCCESS);
+    ASSERT_NE(crl, nullptr);
+
+    params.revokedParams->crls.count = 1;
+    params.revokedParams->crls.data = static_cast<HcfX509Crl **>(
+        CfMalloc(sizeof(HcfX509Crl *), 0));
+    ASSERT_NE(params.revokedParams->crls.data, nullptr);
+    params.revokedParams->crls.data[0] = crl;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CRL_NOT_YET_VALID));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRL_NOT_YET_VALID);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_CrlError_003
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_CRL_SIGNATURE_FAILURE
+ *           Expect CF_ERR_CRL_SIGNATURE_FAILURE
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_CrlError_003, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = false;
+
+    HcfX509Crl *crl = nullptr;
+    CfEncodingBlob crlStream = { reinterpret_cast<uint8_t *>(const_cast<char *>(g_testCertChainPemMidCRL)),
+        sizeof(g_testCertChainPemMidCRL), CF_FORMAT_PEM };
+    CfResult ret = HcfX509CrlCreate(&crlStream, &crl);
+    ASSERT_EQ(ret, CF_SUCCESS);
+    ASSERT_NE(crl, nullptr);
+
+    params.revokedParams->crls.count = 1;
+    params.revokedParams->crls.data = static_cast<HcfX509Crl **>(
+        CfMalloc(sizeof(HcfX509Crl *), 0));
+    ASSERT_NE(params.revokedParams->crls.data, nullptr);
+    params.revokedParams->crls.data[0] = crl;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CRL_SIGNATURE_FAILURE));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRL_SIGNATURE_FAILURE);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_CrlError_004
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER
+ *           Expect CF_ERR_UNABLE_TO_GET_CRL_ISSUER
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_CrlError_004, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = false;
+
+    HcfX509Crl *crl = nullptr;
+    CfEncodingBlob crlStream = { reinterpret_cast<uint8_t *>(const_cast<char *>(g_testCertChainPemMidCRL)),
+        sizeof(g_testCertChainPemMidCRL), CF_FORMAT_PEM };
+    CfResult ret = HcfX509CrlCreate(&crlStream, &crl);
+    ASSERT_EQ(ret, CF_SUCCESS);
+    ASSERT_NE(crl, nullptr);
+
+    params.revokedParams->crls.count = 1;
+    params.revokedParams->crls.data = static_cast<HcfX509Crl **>(
+        CfMalloc(sizeof(HcfX509Crl *), 0));
+    ASSERT_NE(params.revokedParams->crls.data, nullptr);
+    params.revokedParams->crls.data[0] = crl;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_UNABLE_TO_GET_CRL_ISSUER);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_CrlError_005
+ * @tc.desc: Mock X509_verify_cert returns 0 with X509_V_ERR_UNABLE_TO_GET_CRL
+ *           Expect CF_ERR_CRL_NOT_FOUND
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_CrlError_005, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = false;
+
+    HcfX509Crl *crl = nullptr;
+    CfEncodingBlob crlStream = { reinterpret_cast<uint8_t *>(const_cast<char *>(g_testCertChainPemMidCRL)),
+        sizeof(g_testCertChainPemMidCRL), CF_FORMAT_PEM };
+    CfResult ret = HcfX509CrlCreate(&crlStream, &crl);
+    ASSERT_EQ(ret, CF_SUCCESS);
+    ASSERT_NE(crl, nullptr);
+
+    params.revokedParams->crls.count = 1;
+    params.revokedParams->crls.data = static_cast<HcfX509Crl **>(
+        CfMalloc(sizeof(HcfX509Crl *), 0));
+    ASSERT_NE(params.revokedParams->crls.data, nullptr);
+    params.revokedParams->crls.data[0] = crl;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_UNABLE_TO_GET_CRL));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_OPENSSL_sk_new_null_Fail_001
+ * @tc.desc: Mock OPENSSL_sk_new_null returns NULL
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_OPENSSL_sk_new_null_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), OPENSSL_sk_new_null())
+        .WillOnce(Return(nullptr));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_up_ref_Fail_001
+ * @tc.desc: Mock X509_up_ref returns 0
+ *           Expect CF_ERR_CRYPTO_OPERATION
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_up_ref_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_up_ref(_))
+        .WillOnce(Return(0));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_Mock_X509_STORE_CTX_get_current_cert_Fail_001
+ * @tc.desc: Mock X509_STORE_CTX_get_current_cert returns NULL
+ *           Expect error result
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Mock_X509_STORE_CTX_get_current_cert_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testCertChainPemNoRoot);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testCertChainPemMid);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testCertChainPemRoot);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_verify_cert(_))
+        .WillOnce(Return(0));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_error(_))
+        .WillOnce(Return(X509_V_ERR_CERT_HAS_EXPIRED));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_STORE_CTX_get_current_cert(_))
+        .WillOnce(Return(nullptr));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_CERT_HAS_EXPIRED);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_OnlineOcsp_Mock_BIO_do_connect_retry_Fail_001
+ * @tc.desc: Mock BIO_do_connect_retry returns 0
+ *           Expect CF_ERR_OCSP_RESPONSE_NOT_FOUND
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_OnlineOcsp_Mock_BIO_do_connect_retry_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testEndEntityCert);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testRootCaCert);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testIntermediateCaCert);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_OCSP_CHECK;
+    params.revokedParams->allowOcspCheckOnline = true;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), BIO_do_connect_retry(_, _, _))
+        .WillRepeatedly(Return(0));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_OnlineOcsp_Mock_OSSL_HTTP_REQ_CTX_nbio_d2i_Fail_001
+ * @tc.desc: Mock OSSL_HTTP_REQ_CTX_nbio_d2i returns 0
+ *           Expect CF_ERR_OCSP_RESPONSE_NOT_FOUND
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_OnlineOcsp_Mock_OSSL_HTTP_REQ_CTX_nbio_d2i_Fail_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testEndEntityCert);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testRootCaCert);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testIntermediateCaCert);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_OCSP_CHECK;
+    params.revokedParams->allowOcspCheckOnline = true;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), BIO_do_connect_retry(_, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), OSSL_HTTP_REQ_CTX_nbio_d2i(_, _, _))
+        .WillRepeatedly(Return(0));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
 
     CfObjDestroy(cert);
     FreeValidatorParams(params);

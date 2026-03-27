@@ -112,6 +112,15 @@ rsync -av --exclude='.git' /home/lm/code/security_certificate_framework/ /home/l
 # 构建TDD
 cd /home/lm/test_tdd/build_asan_tdd && bash build.sh certificate
 
+# 构建TDD失败，可以清理环境重试
+cd /home/lm/test_tdd/build_asan_tdd && bash build.sh clean
+
+# 覆盖率情况
+/home/lm/test_tdd/build_asan_tdd/coverage/report/adapter/v1.0/src/x509_cert_chain_validator_openssl.c.gcov.html
+
+# 运行全量测试
+cd /home/lm/test_tdd/build_asan_tdd && bash build.sh test certificate_framework_test
+
 # 运行validateX509Cert测试
 cd /home/lm/test_tdd/build_asan_tdd && export LD_LIBRARY_PATH=/home/lm/test_tdd/build_asan_tdd/output/lib:$LD_LIBRARY_PATH && ./output/bin/cf_version1_test --gtest_filter="*ValidateX509Cert*"
 ```
