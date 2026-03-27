@@ -440,6 +440,9 @@ static CfResult ReturnVerifyError(CfResult errorcode, const char *errorMsg, Cert
 {
     LOGE("%{public}d, %{public}s", errorcode, errorMsg);
     result->errorMsg = errorMsg;
+    if (errorcode == CF_ERR_CRYPTO_OPERATION) {
+        CfPrintOpensslError();
+    }
     return errorcode;
 }
 
@@ -462,11 +465,11 @@ static CfResult ReturnVerifyError(CfResult errorcode, const char *errorMsg, Cert
 //     return errorcode;
 // }
 
-static CfResult ReturnVerifyOpensslError(CfResult errorcode, const char *errorMsg, CertVerifyResultInner *result)
-{
-    CfPrintOpensslError();
-    return ReturnVerifyError(errorcode, errorMsg, result);
-}
+// static CfResult ReturnVerifyOpensslError(CfResult errorcode, const char *errorMsg, CertVerifyResultInner *result)
+// {
+//     CfPrintOpensslError();
+//     return ReturnVerifyError(errorcode, errorMsg, result);
+// }
 
 /* KeyUsage type to OpenSSL KU_* bit mapping table */
 static const uint32_t KEYUSAGE_TO_OPENSSL_MAP[] = {
@@ -548,13 +551,13 @@ static CfResult ConstructUntrustedStack(const HcfX509CertValidatorParams *params
 
         if (X509_up_ref(untrustedX509) != 1) {
             sk_X509_pop_free(tmpStack, X509_free);
-            return ReturnVerifyOpensslError(CF_ERR_CRYPTO_OPERATION, "Call X509_up_ref failed.", result);
+            return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Call X509_up_ref failed.", result);
         }
 
         if (!sk_X509_push(tmpStack, untrustedX509)) {
             sk_X509_pop_free(tmpStack, X509_free);
             X509_free(untrustedX509);
-            return ReturnVerifyOpensslError(CF_ERR_CRYPTO_OPERATION, "Call sk_X509_push failed.", result);
+            return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Call sk_X509_push failed.", result);
         }
     }
     *untrustedStack = tmpStack;
@@ -593,17 +596,17 @@ static CfResult ConvertTimeStrToTimeT(const char *timeStr, time_t *result, CertV
     time_t ret = 0;
     ASN1_TIME *asn1_time = ASN1_TIME_new();
     if (asn1_time == NULL) {
-        return ReturnVerifyOpensslError(CF_ERR_CRYPTO_OPERATION, "Call ASN1_TIME_new failed.", resultInner);
+        return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Call ASN1_TIME_new failed.", resultInner);
     }
 
     if (ASN1_TIME_set_string(asn1_time, timeStr) != 1) {
         ASN1_TIME_free(asn1_time);
-        return ReturnVerifyOpensslError(CF_ERR_PARAMETER_CHECK, "Invalid time string.", resultInner);
+        return ReturnVerifyError(CF_ERR_PARAMETER_CHECK, "Invalid time string.", resultInner);
     }
 
     if (ASN1_TIME_to_tm(asn1_time, &tm) != 1) {
         ASN1_TIME_free(asn1_time);
-        return ReturnVerifyOpensslError(CF_ERR_CRYPTO_OPERATION, "Call ASN1_TIME_to_tm failed.", resultInner);
+        return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Call ASN1_TIME_to_tm failed.", resultInner);
     }
     ASN1_TIME_free(asn1_time);
 
@@ -926,7 +929,7 @@ static CfResult AddCrlsToStore(X509_STORE *store, const HcfX509CertRevokedParams
             return ReturnVerifyError(CF_ERR_PARAMETER_CHECK, "Failed to parse CRL.", result);
         }
         if (X509_STORE_add_crl(store, crl) != 1) {
-            return ReturnVerifyOpensslError(CF_ERR_CRYPTO_OPERATION, "Failed to add CRL to store.", result);
+            return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Failed to add CRL to store.", result);
         }
     }
     return CF_SUCCESS;
@@ -942,11 +945,7 @@ static CfResult AddCertChainToStore(X509_STORE *store, STACK_OF(X509) *certChain
             continue;
         }
         if (X509_STORE_add_cert(store, chainCert) != 1) {
-            unsigned long err = ERR_peek_error();
-            if (ERR_GET_REASON(err) != X509_R_CERT_ALREADY_IN_HASH_TABLE) {
-                return ReturnVerifyOpensslError(CF_ERR_CRYPTO_OPERATION, "Failed to add cert to store.", result);
-            }
-            ERR_clear_error();  // Clear the "cert already in hash table" error
+            return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Failed to add cert to store.", result);
         }
     }
     return CF_SUCCESS;
