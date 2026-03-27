@@ -151,6 +151,7 @@ X509 *__real_X509_STORE_CTX_get_current_cert(X509_STORE_CTX *ctx);
 int __real_ASN1_TIME_set_string(ASN1_TIME *s, const char *str);
 int __real_ASN1_TIME_to_tm(const ASN1_TIME *s, struct tm *tm);
 int __real_X509_up_ref(X509 *x509);
+int __real_OSSL_HTTP_REQ_CTX_nbio_d2i(OSSL_HTTP_REQ_CTX *rctx, ASN1_VALUE **pval, const ASN1_ITEM *it);
 CfResult __real_GetIssuerCertFromAllCerts(STACK_OF(X509) *allCerts, X509 *cert, X509 **out);
 #ifdef __cplusplus
 }
@@ -1828,6 +1829,16 @@ int __wrap_X509_up_ref(X509 *x509)
         return X509OpensslMock::GetInstance().X509_up_ref(x509);
     } else {
         return __real_X509_up_ref(x509);
+    }
+}
+
+int __wrap_OSSL_HTTP_REQ_CTX_nbio_d2i(OSSL_HTTP_REQ_CTX *rctx, ASN1_VALUE **pval, const ASN1_ITEM *it)
+{
+    if (g_mockTagX509Openssl) {
+        CF_LOG_I("X509OpensslMock OSSL_HTTP_REQ_CTX_nbio_d2i");
+        return X509OpensslMock::GetInstance().OSSL_HTTP_REQ_CTX_nbio_d2i(rctx, pval, it);
+    } else {
+        return __real_OSSL_HTTP_REQ_CTX_nbio_d2i(rctx, pval, it);
     }
 }
 #ifdef __cplusplus

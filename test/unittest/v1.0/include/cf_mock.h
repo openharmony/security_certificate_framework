@@ -166,7 +166,8 @@ public:
     MOCK_METHOD(int, X509_STORE_CTX_get1_issuer, (X509 **issuer, X509_STORE_CTX *ctx, X509 *x));
     MOCK_METHOD(int, ASN1_TIME_set_string, (ASN1_TIME *s, const char *str));
     MOCK_METHOD(int, ASN1_TIME_to_tm, (const ASN1_TIME *s, struct tm *tm));
-    MOCK_METHOD(int, X509_up_ref, (X509 *x509));
+    MOCK_METHOD(int, X509_up_ref, (X509 * x509));
+    MOCK_METHOD(int, OSSL_HTTP_REQ_CTX_nbio_d2i, (OSSL_HTTP_REQ_CTX * rctx, ASN1_VALUE **pval, const ASN1_ITEM *it));
     static NiceMock<X509OpensslMock> &GetInstance(void);
     static void SetMockFlag(bool flag);
     static void SetHcfMockFlag(bool flag);

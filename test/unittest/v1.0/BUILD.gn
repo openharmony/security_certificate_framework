@@ -231,6 +231,7 @@ ohos_unittest("cf_version1_test") {
     "-Wl,--wrap=ASN1_TIME_set_string",
     "-Wl,--wrap=ASN1_TIME_to_tm",
     "-Wl,--wrap=X509_up_ref",
+    "-Wl,--wrap=OSSL_HTTP_REQ_CTX_nbio_d2i",
   ]
 
   if (target_cpu == "arm") {
