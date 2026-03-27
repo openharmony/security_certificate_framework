@@ -743,29 +743,6 @@ static CfResult BuildAndVerifyCertChain(
 }
 ```
 
-##### 2.3.2.2 DoS防护机制
-
-为防止恶意证书导致无限下载，实现了多层防护：
-
-**下载限制参数汇总：**
-
-| 场景 | 参数 | 值 | 说明 |
-|------|------|-----|------|
-| 中间CA下载 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5次 | 单次验证最多下载中间CA证书数量 |
-| 中间CA下载 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3次 | 遍历AIA扩展的最大次数 |
-| 中间CA下载 | `DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | 单次HTTP下载证书超时 |
-| CRL下载 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | CRL下载总次数限制 |
-| CRL下载 | `CRL_DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | 单次HTTP下载CRL超时 |
-| OCSP请求 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | OCSP请求总次数限制 |
-| OCSP请求 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | 单次OCSP连接/请求超时 |
-
-**防护策略：**
-- 中间CA下载：单次验证最多下载5个证书，每个证书最多遍历3个AIA条目
-- CRL下载：单次验证最多下载6次
-- OCSP请求：单次验证最多请求6次
-- 所有网络操作超时均为3秒
-- 超时错误立即返回，不继续重试
-
 ##### 2.3.2.3 网络超时检测
 
 ```c
