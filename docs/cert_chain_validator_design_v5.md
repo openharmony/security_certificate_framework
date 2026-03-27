@@ -1261,22 +1261,31 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 
 ##### 2.3.3.1 参数配置汇总
 
+**参数说明：**
+- **单次证书链验证的总次数**：一次 `validateX509Cert()` 调用中允许的总操作次数
+- **单次尝试下载的总次数**：某一次下载/请求操作中尝试不同URL的次数
+
 | 场景 | 参数名 | 宏定义 | 值 | 说明 |
 |------|--------|--------|-----|------|
-| **中间CA下载** | 总下载次数限制 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5次 | 单次验证最多下载中间CA证书数量 |
-| **中间CA下载** | AIA遍历次数限制 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3次 | 遍历AIA扩展的最大次数 |
+| **中间CA下载** | 验证总下载次数 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5次 | 单次证书链验证最多下载中间CA证书数量 |
+| **中间CA下载** | 单次尝试遍历次数 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3次 | 单次下载尝试中遍历AIA扩展的最大次数 |
 | **中间CA下载** | 下载超时 | `DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | HTTP下载证书超时 |
-| **CRL下载** | 总下载次数限制 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | CRL下载总次数限制 |
+| **CRL下载** | 单次尝试遍历次数 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | 单次CRL下载尝试中遍历URL的最大次数 |
 | **CRL下载** | 下载超时 | `CRL_DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | HTTP下载CRL超时 |
-| **OCSP请求** | 总请求次数限制 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | OCSP请求总次数限制 |
+| **OCSP请求** | 单次尝试遍历次数 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | 单次OCSP检查中遍历URL的最大次数 |
 | **OCSP请求** | 连接超时 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | TCP连接超时 |
 | **OCSP请求** | 响应超时 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | HTTP响应超时 |
 
 ##### 2.3.3.2 中间CA下载流程图
 
+**关键区别：**
+- `MAX_TOTAL_DOWNLOAD_CERT_COUNT = 5`：单次证书链验证的总下载次数限制
+- `MAX_INFO_ACCESS_TRAVERSE_COUNT = 3`：单次下载尝试中遍历AIA的次数限制
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                        BuildAndVerifyCertChain() 主循环                        │
+│              【单次证书链验证的总下载次数: MAX_TOTAL_DOWNLOAD_CERT_COUNT = 5】   │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  remainingCount = MAX_TOTAL_DOWNLOAD_CERT_COUNT (5)                          │
 │                                                                              │
@@ -1291,10 +1300,12 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 │  │   │                                                                      │ │
 │  │   ├── allowDownloadIntermediateCa == false? ───────────────→ 返回错误   │ │
 │  │   │                                                                      │ │
-│  │   ├── remainingCount--                                                   │ │
+│  │   ├── remainingCount--  【消耗一次验证总下载次数】                         │ │
 │  │   │                                                                      │ │
 │  │   └── DownloadAndAddIntermediateCert()                                  │ │
 │  │       ├── 获取AIA扩展 (NID_info_access)                                 │ │
+│  │       ├── remainingCount = MAX_INFO_ACCESS_TRAVERSE_COUNT (3)           │ │
+│  │       │   【单次下载尝试的遍历次数】                                       │ │
 │  │       ├── 遍历ACCESS_DESCRIPTION (最多3次)                              │ │
 │  │       │   ├── 检查 method == NID_ad_ca_issuers                         │ │
 │  │       │   ├── 检查 location->type == GEN_URI                            │ │
@@ -1312,11 +1323,20 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**次数消耗说明：**
+- 验证总下载次数在每次 `X509_verify_cert()` 失败后消耗
+- 单次尝试遍历次数在每次尝试下载URL时消耗
+- 两个计数器独立计数
+
 ##### 2.3.3.3 CRL下载流程图
+
+**关键区别：**
+- `MAX_TOTAL_DOWNLOAD_COUNT = 6`：单次CRL下载尝试中遍历URL的次数限制
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                           DownloadCrlFromCdp()                                │
+│           【单次尝试下载的遍历次数: MAX_TOTAL_DOWNLOAD_COUNT = 6】              │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  remainingCount = MAX_TOTAL_DOWNLOAD_COUNT (6)                               │
 │                                                                              │
@@ -1327,7 +1347,7 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 │  │   └── 遍历每个GENERAL_NAME (fullname):                                   │ │
 │  │       ├── 检查 type == GEN_URI                                           │ │
 │  │       ├── 校验URL为http/https                                            │ │
-│  │       ├── remainingCount--                                               │ │
+│  │       ├── remainingCount--  【消耗一次尝试次数】                          │ │
 │  │       ├── ERR_clear_error()                                              │ │
 │  │       └── X509_CRL_load_http(url, NULL, NULL, 3秒)                       │ │
 │  │           ├── 成功 → 返回CRL                                             │ │
@@ -1343,11 +1363,19 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**说明：**
+- 此函数在 `CheckSingleCertByCrl()` 中被调用
+- 每个证书的CRL检查都是独立的，各自有6次URL尝试机会
+
 ##### 2.3.3.4 OCSP在线请求流程图
+
+**关键区别：**
+- `MAX_TOTAL_DOWNLOAD_COUNT = 6`：单次OCSP检查中遍历URL的次数限制
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                         PerformOnlineOcspCheck()                             │
+│           【单次尝试请求的遍历次数: MAX_TOTAL_DOWNLOAD_COUNT = 6】              │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  remainingCount = MAX_TOTAL_DOWNLOAD_COUNT (6)                               │
 │                                                                              │
@@ -1358,7 +1386,7 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 │  │ 遍历每个OCSP URL: while (remainingCount > 0)                             │ │
 │  │   └── TrySingleOcspUrl()                                                 │ │
 │  │       ├── OCSP_parse_url() 解析URL                                       │ │
-│  │       ├── remainingCount--                                               │ │
+│  │       ├── remainingCount--  【消耗一次尝试次数】                          │ │
 │  │       ├── CreateConnectBio() 建立连接                                    │ │
 │  │       │   └── BIO_do_connect_retry(bio, 3秒, 0)                          │ │
 │  │       │       ├── 成功 → 返回BIO                                         │ │
@@ -1388,7 +1416,29 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-##### 2.3.3.5 超时错误处理
+**说明：**
+- 此函数在 `CheckSingleCertByOcsp()` 中被调用
+- 每个证书的OCSP检查都是独立的，各自有6次URL尝试机会
+
+##### 2.3.3.5 次数限制总结
+
+| 场景 | 次数类型 | 参数 | 值 | 说明 |
+|------|----------|------|-----|------|
+| **中间CA下载** | 单次验证总次数 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5 | 一次 `validateX509Cert()` 调用最多下载5个中间CA |
+| **中间CA下载** | 单次尝试次数 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3 | 每次下载尝试最多遍历3个AIA条目 |
+| **CRL下载** | 单次尝试次数 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6 | 每次CRL下载尝试最多遍历6个CDP URL |
+| **OCSP请求** | 单次尝试次数 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6 | 每次OCSP检查最多遍历6个OCSP URL |
+
+**重要区别：**
+
+1. **中间CA下载**同时有两层计数：
+   - 外层：单次验证总次数（整个验证过程最多下载5个中间CA）
+   - 内层：单次尝试次数（每次下载尝试最多遍历3个AIA URL）
+
+2. **CRL/OCSP**只有一层计数：
+   - 每个证书的吊销检查独立进行，各自有6次URL尝试机会
+
+##### 2.3.3.6 超时错误处理
 
 所有网络操作都会检测超时错误并返回统一的错误码：
 
