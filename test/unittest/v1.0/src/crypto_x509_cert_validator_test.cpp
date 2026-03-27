@@ -5815,6 +5815,70 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Mock_003, Test
 }
 
 /**
+ * @tc.name: ValidateX509Cert_Revocation_Mock_003_1
+ * @tc.desc: Test X509_CRL_load_http returns NULL with timeout error
+ *           When X509_CRL_load_http returns NULL due to network timeout, expect CF_ERR_NETWORK_TIMEOUT
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Mock_003_1, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_testEndEntityForCdp);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_testRootCaForCdp);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_testIntermediateCaWithCdp);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->allowDownloadCrl = true;
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), X509_CRL_load_http(_, _, _, _))
+        .WillRepeatedly(Return(nullptr));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), ERR_peek_error())
+        .WillRepeatedly(Return(static_cast<unsigned long>(BIO_R_CONNECT_TIMEOUT)));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    if (res != CF_SUCCESS) {
+        CF_LOG_I("ValidateX509Cert_Revocation_Mock_003_1 failed: res=%d, errorMsg=%s", res,
+                 result.errorMsg ? result.errorMsg : "null");
+    }
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    EXPECT_EQ(res, CF_ERR_NETWORK_TIMEOUT);
+    EXPECT_NE(result.errorMsg, nullptr);
+
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+}
+
+/**
  * @tc.name: ValidateX509Cert_Revocation_Mock_004
  * @tc.desc: Test X509_get1_ocsp returns NULL (no OCSP URL)
  *           When certificate has no OCSP URL, expect CF_ERR_OCSP_RESPONSE_NOT_FOUND
