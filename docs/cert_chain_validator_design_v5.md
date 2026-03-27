@@ -644,16 +644,39 @@ typedef enum CfResult {
 **背景：**
 在证书链验证场景中，当验证过程遇到"无法获取本地颁发者证书"错误（X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY）时，通常是因为缺少中间证书。根据 X.509 标准的 Authority Information Access (AIA) 扩展，证书中可能包含指向颁发者证书的下载URL。本特性实现了自动从AIA扩展下载缺失的中间证书，提高证书链验证的成功率。
 
+**下载参数配置：**
+
+| 参数名 | 宏定义 | 值 | 说明 |
+|--------|--------|-----|------|
+| 中间CA下载总次数限制 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5 | 单次验证最多下载5个中间证书 |
+| AIA扩展遍历次数限制 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3 | 遍历AIA扩展的最大次数 |
+| 单次下载超时 | `DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | HTTP下载证书的超时时间 |
+
 **流程说明：**
 
-1. 证书链验证失败，错误码为 `X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY`
-2. 检查 `allowDownloadIntermediateCa` 参数是否启用
-3. 从当前链中最后一个证书获取 AIA 扩展
-4. 遍历 ACCESS_DESCRIPTION 寻找 caIssuers 类型
-5. 提取 URI 并调用 `X509_load_http()` 下载证书
-6. 将下载的证书添加到非信任证书栈
-7. 重新执行证书链验证
-8. 循环直到验证成功或达到下载次数限制
+```
+BuildAndVerifyCertChain() 主循环：
+├── remainingCount = 5 (MAX_TOTAL_DOWNLOAD_CERT_COUNT)
+├── 循环执行验证
+│   ├── 调用 ExecuteSingleVerification() 执行X509_verify_cert()
+│   ├── 如果验证成功 → 返回成功
+│   ├── 如果错误码不是 X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY → 返回错误
+│   ├── 如果 allowDownloadIntermediateCa == false → 返回错误
+│   ├── remainingCount--
+│   └── 调用 DownloadAndAddIntermediateCert() 下载中间证书
+│       ├── 获取证书的AIA扩展 (NID_info_access)
+│       ├── 遍历 ACCESS_DESCRIPTION (最多3次: MAX_INFO_ACCESS_TRAVERSE_COUNT)
+│       │   ├── 检查 method == NID_ad_ca_issuers (颁发者证书类型)
+│       │   ├── 检查 location->type == GEN_URI (URI类型)
+│       │   ├── remainingCount--
+│       │   └── 调用 DownloadCertFromAiaUrl()
+│       │       └── X509_load_http(url, NULL, NULL, 3秒超时)
+│       │           ├── 成功 → 返回证书
+│       │           ├── 超时 (BIO_R_CONNECT_TIMEOUT/BIO_R_TRANSFER_TIMEOUT) → 返回 CF_ERR_NETWORK_TIMEOUT
+│       │           └── 其他失败 → 返回 CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
+│       └── 将下载的证书添加到 untrustedCertStack
+└── 循环结束（remainingCount == 0 或下载成功）
+```
 
 **关键代码实现：**
 
@@ -724,40 +747,68 @@ static CfResult BuildAndVerifyCertChain(
 
 为防止恶意证书导致无限下载，实现了多层防护：
 
-```c
-#define MAX_TOTAL_DOWNLOAD_COUNT 6    // 总下载次数限制
-#define MAX_AIA_URL_RETRY_COUNT 2     // 每个URL重试次数
-#define DOWNLOAD_TIMEOUT_SECONDS 5    // 单次下载超时（秒）
-```
+**下载限制参数汇总：**
+
+| 场景 | 参数 | 值 | 说明 |
+|------|------|-----|------|
+| 中间CA下载 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5次 | 单次验证最多下载中间CA证书数量 |
+| 中间CA下载 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3次 | 遍历AIA扩展的最大次数 |
+| 中间CA下载 | `DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | 单次HTTP下载证书超时 |
+| CRL下载 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | CRL下载总次数限制 |
+| CRL下载 | `CRL_DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | 单次HTTP下载CRL超时 |
+| OCSP请求 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | OCSP请求总次数限制 |
+| OCSP请求 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | 单次OCSP连接/请求超时 |
 
 **防护策略：**
-- 单次验证最多下载 6 个证书
-- 每个 URL 最多重试 2 次
-- 单次下载超时 5 秒
+- 中间CA下载：单次验证最多下载5个证书，每个证书最多遍历3个AIA条目
+- CRL下载：单次验证最多下载6次
+- OCSP请求：单次验证最多请求6次
+- 所有网络操作超时均为3秒
 - 超时错误立即返回，不继续重试
 
 ##### 2.3.2.3 网络超时检测
 
 ```c
-static DownloadResult DownloadCertificateFromUrlWithResult(const char *url, X509 **cert)
+static CfResult DownloadCertFromAiaUrl(const char *url, X509 **cert)
 {
+    ERR_clear_error();
     *cert = X509_load_http(url, NULL, NULL, DOWNLOAD_TIMEOUT_SECONDS);
-    if (*cert == NULL) {
-        unsigned long err = ERR_peek_error();
-        int reason = ERR_GET_REASON(err);
-
-        // 检测超时错误
-        if (reason == BIO_R_CONNECT_TIMEOUT || reason == BIO_R_TRANSFER_TIMEOUT) {
-            LOGE("Download certificate timeout from URL: %s", url);
-            return DOWNLOAD_RESULT_TIMEOUT;
-        }
-        return DOWNLOAD_RESULT_FAILED;
+    if (*cert != NULL) {
+        return CF_SUCCESS;
     }
-    return DOWNLOAD_RESULT_SUCCESS;
+
+    unsigned long err = ERR_peek_error();
+    int reason = ERR_GET_REASON(err);
+    
+    // 检测超时错误
+    if (reason == BIO_R_CONNECT_TIMEOUT || reason == BIO_R_TRANSFER_TIMEOUT) {
+        LOGW("Download certificate timeout from URL: %s", url);
+        return CF_ERR_NETWORK_TIMEOUT;
+    }
+    if (reason == ERR_R_MALLOC_FAILURE) {
+        return CF_ERR_MALLOC;
+    }
+    return CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY;
 }
 ```
 
+**超时错误映射：**
+
+| OpenSSL错误原因 | 错误码 | 返回结果 |
+|-----------------|--------|----------|
+| `BIO_R_CONNECT_TIMEOUT` | 连接超时 | `CF_ERR_NETWORK_TIMEOUT` |
+| `BIO_R_TRANSFER_TIMEOUT` | 传输超时 | `CF_ERR_NETWORK_TIMEOUT` |
+| `ERR_R_MALLOC_FAILURE` | 内存分配失败 | `CF_ERR_MALLOC` |
+| 其他 | 其他错误 | `CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY` |
+
 ##### 2.3.2.4 CRL吊销检查
+
+**CRL下载参数配置：**
+
+| 参数名 | 宏定义 | 值 | 说明 |
+|--------|--------|-----|------|
+| CRL下载总次数限制 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | 单次验证最多下载CRL次数 |
+| CRL下载超时 | `CRL_DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | HTTP下载CRL的超时时间 |
 
 **CRL检查流程：**
 
@@ -766,6 +817,31 @@ static DownloadResult DownloadCertificateFromUrlWithResult(const char *url, X509
 3. 如果 `allowDownloadCrl` 为 true，尝试从证书的 CRL Distribution Points 扩展下载 CRL
 4. 验证 CRL 签名和有效期
 5. 检查证书是否在 CRL 中
+
+**CRL下载详细流程：**
+
+```
+DownloadCrlFromCdp()：
+├── remainingCount = 6 (MAX_TOTAL_DOWNLOAD_COUNT)
+├── 获取证书的CRL Distribution Points扩展 (NID_crl_distribution_points)
+├── 遍历每个DistributionPoint
+│   └── 遍历每个GENERAL_NAME (fullname类型)
+│       ├── 检查 type == GEN_URI (URI类型)
+│       ├── 校验URL为http/https (IsValidHttpUrl)
+│       ├── remainingCount--
+│       ├── ERR_clear_error()
+│       ├── 调用 X509_CRL_load_http(url, NULL, NULL, 3秒超时)
+│       │   ├── 成功 → 返回CRL
+│       │   └── 失败 → 检查错误原因
+│       │       ├── BIO_R_CONNECT_TIMEOUT → ret = CF_ERR_NETWORK_TIMEOUT
+│       │       └── 其他 → 继续
+│       └── 如果成功则跳出循环
+├── 释放DIST_POINT栈
+└── 返回结果
+    ├── CRL不为空 → CF_SUCCESS
+    ├── 超时 → CF_ERR_NETWORK_TIMEOUT
+    └── 其他 → CF_ERR_CRL_NOT_FOUND
+```
 
 **关键代码实现：**
 
@@ -816,28 +892,76 @@ static CfResult DownloadCrlFromCdp(X509 *cert, X509_CRL **crlOut, CertVerifyResu
 {
     STACK_OF(DIST_POINT) *crldp = X509_get_ext_d2i(cert, NID_crl_distribution_points, NULL, NULL);
     if (crldp == NULL) {
-        return CF_ERR_CRL_NOT_FOUND;
+        return ReturnVerifyError(CF_ERR_CRL_NOT_FOUND, "No CRL distribution points extension found.", result);
     }
-    
+
     X509_CRL *crl = NULL;
-    for (int i = 0; i < sk_DIST_POINT_num(crldp); i++) {
+    CfResult ret = CF_ERR_CRL_NOT_FOUND;
+    int remainingCount = MAX_TOTAL_DOWNLOAD_COUNT;
+    int num = sk_DIST_POINT_num(crldp);
+    
+    for (int i = 0; i < num && crl == NULL && remainingCount > 0; i++) {
         DIST_POINT *dp = sk_DIST_POINT_value(crldp, i);
-        char *url = GetDpUrl(dp);
-        if (url != NULL) {
-            crl = X509_CRL_load_http(url, NULL, NULL, CRL_DOWNLOAD_TIMEOUT);
+        // 检查distpoint类型为fullname
+        if (dp == NULL || dp->distpoint == NULL || dp->distpoint->type != 0) {
+            continue;
+        }
+
+        STACK_OF(GENERAL_NAME) *names = dp->distpoint->name.fullname;
+        int nameCount = sk_GENERAL_NAME_num(names);
+        
+        for (int j = 0; j < nameCount && crl == NULL && remainingCount > 0; j++) {
+            GENERAL_NAME *genName = sk_GENERAL_NAME_value(names, j);
+            if (genName == NULL || genName->type != GEN_URI) {
+                continue;
+            }
+            
+            char *url = (char *)genName->d.uniformResourceIdentifier->data;
+            if (!IsValidHttpUrl(url)) {
+                LOGW("Invalid CRL URL (not http/https): %s", url);
+                continue;
+            }
+            
+            remainingCount--;
+            ERR_clear_error();
+            crl = X509_CRL_load_http(url, NULL, NULL, CRL_DOWNLOAD_TIMEOUT_SECONDS);
+            
             if (crl != NULL) {
                 break;
             }
+            
+            // 检查超时错误
+            unsigned long err = ERR_peek_error();
+            int reason = ERR_GET_REASON(err);
+            if (reason == BIO_R_CONNECT_TIMEOUT || reason == BIO_R_TRANSFER_TIMEOUT) {
+                ret = CF_ERR_NETWORK_TIMEOUT;
+            }
         }
     }
+    
     sk_DIST_POINT_pop_free(crldp, DIST_POINT_free);
     
-    *crlOut = crl;
-    return crl ? CF_SUCCESS : CF_ERR_CRL_NOT_FOUND;
+    if (crl != NULL) {
+        *crlOut = crl;
+        return CF_SUCCESS;
+    }
+    
+    if (ret == CF_ERR_NETWORK_TIMEOUT) {
+        return ReturnVerifyError(CF_ERR_NETWORK_TIMEOUT, "Failed to download CRL from CDP, network timeout.", result);
+    }
+    return ReturnVerifyError(CF_ERR_CRL_NOT_FOUND, "Failed to download CRL from CDP.", result);
 }
 ```
 
 ##### 2.3.2.5 OCSP吊销检查
+
+**OCSP请求参数配置：**
+
+| 参数名 | 宏定义 | 值 | 说明 |
+|--------|--------|-----|------|
+| OCSP请求总次数限制 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | 单次验证最多OCSP请求次数 |
+| OCSP连接超时 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | TCP连接超时时间 |
+| OCSP响应超时 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | HTTP响应超时时间 |
 
 **OCSP检查流程：**
 
@@ -848,36 +972,172 @@ static CfResult DownloadCrlFromCdp(X509 *cert, X509_CRL **crlOut, CertVerifyResu
 5. 验证 OCSP 响应签名
 6. 检查证书状态
 
-**关键代码实现：**
+**OCSP在线请求详细流程：**
+
+```
+PerformOnlineOcspCheck()：
+├── remainingCount = 6 (MAX_TOTAL_DOWNLOAD_COUNT)
+├── 获取证书中的OCSP URL列表 (X509_get1_ocsp)
+├── 创建OCSP请求
+│   ├── 获取摘要算法 (GetOcspDigestByType)
+│   ├── 创建 OCSP_CERTID (OCSP_cert_to_id)
+│   └── 添加nonce (OCSP_request_add1_nonce)
+├── 遍历每个OCSP URL (remainingCount > 0)
+│   └── TrySingleOcspUrl()
+│       ├── 解析URL (OCSP_parse_url)
+│       ├── remainingCount--
+│       ├── 创建连接BIO (CreateConnectBio)
+│       │   └── BIO_do_connect_retry(bio, 3秒超时, 0)
+│       │       ├── 成功 → 返回BIO
+│       │       ├── 超时 (BIO_R_CONNECT_TIMEOUT) → CF_ERR_NETWORK_TIMEOUT
+│       │       └── 其他失败 → CF_ERR_OCSP_RESPONSE_NOT_FOUND
+│       ├── 发送OCSP请求 (SendOcspRequestWithTimeout)
+│       │   ├── 创建请求上下文 (OCSP_sendreq_new)
+│       │   ├── 设置响应超时 (OSSL_HTTP_REQ_CTX_set_expected, 3秒)
+│       │   └── 发送请求 (OCSP_sendreq_nbio)
+│       │       ├── 成功 → 返回响应
+│       │       ├── 超时 → CF_ERR_NETWORK_TIMEOUT
+│       │       └── 其他失败 → CF_ERR_OCSP_RESPONSE_NOT_FOUND
+│       └── 验证响应 (VerifyOnlineOcspResponse)
+│           ├── 检查响应状态
+│           ├── 验证签名 (OCSP_basic_verify)
+│           └── 获取证书状态
+│               ├── V_OCSP_CERTSTATUS_GOOD → CF_SUCCESS
+│               ├── V_OCSP_CERTSTATUS_REVOKED → CF_ERR_CERT_REVOKED
+│               └── V_OCSP_CERTSTATUS_UNKNOWN → CF_ERR_OCSP_CERT_STATUS_UNKNOWN
+└── 返回最终结果
+```
+
+**OCSP在线请求实现：**
 
 ```c
 static CfResult PerformOnlineOcspCheck(X509 *cert, X509 *issuer,
-    HcfX509CertRevokedParams *revokedParams,
-    HcfX509CertValidatorOpenSSLParams *opensslParams,
+    const HcfX509CertValidatorParams *params,
+    const HcfX509CertValidatorOpenSSLParams *opensslParams,
     CertVerifyResultInner *result)
 {
-    // 1. 获取OCSP URL
+    // 1. 获取OCSP URL列表
     STACK_OF(OPENSSL_STRING) *ocspUrls = X509_get1_ocsp(cert);
-    if (ocspUrls == NULL) {
-        return CF_ERR_OCSP_RESPONSE_NOT_FOUND;
+    if (ocspUrls == NULL || sk_OPENSSL_STRING_num(ocspUrls) == 0) {
+        return ReturnVerifyError(CF_ERR_OCSP_RESPONSE_NOT_FOUND, "No OCSP URL found in certificate.", result);
+    }
+
+    // 2. 创建OCSP请求，使用配置的摘要算法
+    OCSP_REQUEST *req = NULL;
+    CfResult res = CreateOcspRequest(cert, issuer, params->revokedParams, result, &req);
+    if (res != CF_SUCCESS) {
+        X509_email_free(ocspUrls);
+        return res;
+    }
+
+    // 3. 获取certId用于后续验证
+    OCSP_CERTID *certId = OCSP_CERTID_dup(OCSP_onereq_get0_id(OCSP_request_onereq_get0(req, 0)));
+    
+    // 4. 遍历URL发送请求
+    int remainingCount = MAX_TOTAL_DOWNLOAD_COUNT;
+    OcspCheckContext ctx = { req, certId, cert, &remainingCount };
+    res = CF_ERR_OCSP_RESPONSE_NOT_FOUND;
+    
+    for (int i = 0; i < sk_OPENSSL_STRING_num(ocspUrls) && remainingCount > 0; i++) {
+        res = TrySingleOcspUrl(sk_OPENSSL_STRING_value(ocspUrls, i), &ctx, opensslParams, result);
+        // 只有不超时和找不到响应时才继续尝试下一个URL
+        if (res != CF_ERR_OCSP_RESPONSE_NOT_FOUND && res != CF_ERR_NETWORK_TIMEOUT) {
+            break;
+        }
     }
     
-    // 2. 构建OCSP请求，使用配置的摘要算法
-    OCSP_REQUEST *req = OCSP_REQUEST_new();
-    const EVP_MD *md = GetOcspDigest(revokedParams->ocspDigest);
-    OCSP_CERTID *certId = OCSP_cert_to_id(md, cert, issuer);
-    OCSP_request_add0_id(req, certId);
-    OCSP_request_add1_nonce(req, NULL, -1);
-    
-    // 3. 发送请求
-    char *url = sk_OPENSSL_STRING_value(ocspUrls, 0);
-    OCSP_RESPONSE *resp = OCSP_sendreq_bio(bio, path, req);
-    
-    // 4. 验证响应
-    CfResult res = VerifyOnlineOcspResponse(cert, issuer, resp, certId, 
-        opensslParams->certChain, opensslParams->store, result);
-    
+    OCSP_CERTID_free(certId);
+    OCSP_REQUEST_free(req);
+    X509_email_free(ocspUrls);
     return res;
+}
+
+static CfResult TrySingleOcspUrl(const char *url, OcspCheckContext *ctx,
+    const HcfX509CertValidatorOpenSSLParams *opensslParams, CertVerifyResultInner *result)
+{
+    char *host = NULL, *port = NULL, *path = NULL;
+    int use_ssl = 0;
+
+    // 解析URL
+    if (OCSP_parse_url(url, &host, &port, &path, &use_ssl) != 1) {
+        return ReturnVerifyError(CF_ERR_OCSP_RESPONSE_NOT_FOUND, "Failed to parse OCSP URL.", result);
+    }
+
+    (*ctx->remainingCount)--;
+    
+    // 创建连接 (3秒超时)
+    int errReason = 0;
+    BIO *bio = CreateConnectBio(host, port, &errReason);
+    if (bio == NULL) {
+        FreeConnectInfo(host, port, path);
+        if (errReason == BIO_R_CONNECT_TIMEOUT || errReason == BIO_R_TRANSFER_TIMEOUT) {
+            return ReturnVerifyError(CF_ERR_NETWORK_TIMEOUT, "OCSP connection timeout.", result);
+        }
+        return ReturnVerifyError(CF_ERR_OCSP_RESPONSE_NOT_FOUND, "Failed to connect to OCSP server.", result);
+    }
+
+    // 发送请求 (3秒响应超时)
+    OCSP_RESPONSE *resp = NULL;
+    CfResult sendRes = SendOcspRequestWithTimeout(bio, path, ctx->req, &resp, result);
+    BIO_free(bio);
+    FreeConnectInfo(host, port, path);
+
+    if (sendRes != CF_SUCCESS) {
+        return sendRes;
+    }
+
+    // 验证响应
+    CfResult res = VerifyOnlineOcspResponse(resp, ctx->certId, ctx->cert, opensslParams, result);
+    OCSP_RESPONSE_free(resp);
+    return res;
+}
+
+static BIO *CreateConnectBio(const char *host, const char *port, int *errReason)
+{
+    BIO *bio = BIO_new_connect(host);
+    if (bio == NULL) {
+        *errReason = ERR_GET_REASON(ERR_peek_last_error());
+        return NULL;
+    }
+    BIO_set_conn_port(bio, port);
+    // 3秒连接超时
+    int ret = BIO_do_connect_retry(bio, OCSP_REQUEST_TIMEOUT_SECONDS, 0);
+    if (ret != 1) {
+        *errReason = ERR_GET_REASON(ERR_peek_last_error());
+        BIO_free(bio);
+        return NULL;
+    }
+    return bio;
+}
+
+static CfResult SendOcspRequestWithTimeout(BIO *bio, const char *path, OCSP_REQUEST *req,
+    OCSP_RESPONSE **respOut, CertVerifyResultInner *result)
+{
+    OSSL_HTTP_REQ_CTX *ctx = OCSP_sendreq_new(bio, path, req, -1);
+    if (ctx == NULL) {
+        return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Failed to create OCSP request context.", result);
+    }
+
+    // 3秒响应超时
+    if (OSSL_HTTP_REQ_CTX_set_expected(ctx, NULL, 1, OCSP_REQUEST_TIMEOUT_SECONDS, 0) != 1) {
+        OSSL_HTTP_REQ_CTX_free(ctx);
+        return ReturnVerifyError(CF_ERR_CRYPTO_OPERATION, "Failed to set OCSP request timeout.", result);
+    }
+
+    OCSP_RESPONSE *resp = NULL;
+    int ret = OCSP_sendreq_nbio(&resp, ctx);
+    OSSL_HTTP_REQ_CTX_free(ctx);
+    
+    if (ret == 1) {
+        *respOut = resp;
+        return CF_SUCCESS;
+    }
+
+    int reason = ERR_GET_REASON(ERR_peek_error());
+    if (reason == BIO_R_CONNECT_TIMEOUT || reason == BIO_R_TRANSFER_TIMEOUT) {
+        return ReturnVerifyError(CF_ERR_NETWORK_TIMEOUT, "OCSP request timeout.", result);
+    }
+    return ReturnVerifyError(CF_ERR_OCSP_RESPONSE_NOT_FOUND, "OCSP response not found.", result);
 }
 ```
 
@@ -997,7 +1257,152 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 }
 ```
 
-#### 2.3.3 内存管理
+#### 2.3.3 下载逻辑详细总结
+
+##### 2.3.3.1 参数配置汇总
+
+| 场景 | 参数名 | 宏定义 | 值 | 说明 |
+|------|--------|--------|-----|------|
+| **中间CA下载** | 总下载次数限制 | `MAX_TOTAL_DOWNLOAD_CERT_COUNT` | 5次 | 单次验证最多下载中间CA证书数量 |
+| **中间CA下载** | AIA遍历次数限制 | `MAX_INFO_ACCESS_TRAVERSE_COUNT` | 3次 | 遍历AIA扩展的最大次数 |
+| **中间CA下载** | 下载超时 | `DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | HTTP下载证书超时 |
+| **CRL下载** | 总下载次数限制 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | CRL下载总次数限制 |
+| **CRL下载** | 下载超时 | `CRL_DOWNLOAD_TIMEOUT_SECONDS` | 3秒 | HTTP下载CRL超时 |
+| **OCSP请求** | 总请求次数限制 | `MAX_TOTAL_DOWNLOAD_COUNT` | 6次 | OCSP请求总次数限制 |
+| **OCSP请求** | 连接超时 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | TCP连接超时 |
+| **OCSP请求** | 响应超时 | `OCSP_REQUEST_TIMEOUT_SECONDS` | 3秒 | HTTP响应超时 |
+
+##### 2.3.3.2 中间CA下载流程图
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        BuildAndVerifyCertChain() 主循环                        │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  remainingCount = MAX_TOTAL_DOWNLOAD_CERT_COUNT (5)                          │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │ 循环: while (remainingCount > 0)                                         │ │
+│  │   ├── ExecuteSingleVerification()                                       │ │
+│  │   │   └── X509_verify_cert()                                            │ │
+│  │   │                                                                      │ │
+│  │   ├── 成功? ──────────────────────────────────────────────→ 返回成功    │ │
+│  │   │                                                                      │ │
+│  │   ├── 错误不是 UNABLE_TO_GET_ISSUER_CERT_LOCALLY? ─────────→ 返回错误   │ │
+│  │   │                                                                      │ │
+│  │   ├── allowDownloadIntermediateCa == false? ───────────────→ 返回错误   │ │
+│  │   │                                                                      │ │
+│  │   ├── remainingCount--                                                   │ │
+│  │   │                                                                      │ │
+│  │   └── DownloadAndAddIntermediateCert()                                  │ │
+│  │       ├── 获取AIA扩展 (NID_info_access)                                 │ │
+│  │       ├── 遍历ACCESS_DESCRIPTION (最多3次)                              │ │
+│  │       │   ├── 检查 method == NID_ad_ca_issuers                         │ │
+│  │       │   ├── 检查 location->type == GEN_URI                            │ │
+│  │       │   ├── remainingCount--                                          │ │
+│  │       │   └── TryDownloadFromSingleAia()                                │ │
+│  │       │       └── DownloadCertFromAiaUrl()                              │ │
+│  │       │           └── X509_load_http(url, NULL, NULL, 3秒)              │ │
+│  │       │                   ├── 成功 → 返回证书                           │ │
+│  │       │                   ├── 超时 → CF_ERR_NETWORK_TIMEOUT             │ │
+│  │       │                   └── 其他 → CF_ERR_UNABLE_TO_GET_ISSUER_CERT   │ │
+│  │       └── 添加到untrustedCertStack                                       │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  循环结束 (remainingCount == 0) → 返回错误                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### 2.3.3.3 CRL下载流程图
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           DownloadCrlFromCdp()                                │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  remainingCount = MAX_TOTAL_DOWNLOAD_COUNT (6)                               │
+│                                                                              │
+│  获取CRL Distribution Points扩展 (NID_crl_distribution_points)               │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │ 遍历每个DistributionPoint:                                               │ │
+│  │   └── 遍历每个GENERAL_NAME (fullname):                                   │ │
+│  │       ├── 检查 type == GEN_URI                                           │ │
+│  │       ├── 校验URL为http/https                                            │ │
+│  │       ├── remainingCount--                                               │ │
+│  │       ├── ERR_clear_error()                                              │ │
+│  │       └── X509_CRL_load_http(url, NULL, NULL, 3秒)                       │ │
+│  │           ├── 成功 → 返回CRL                                             │ │
+│  │           └── 失败 → 检查错误原因                                        │ │
+│  │               ├── BIO_R_CONNECT_TIMEOUT → ret = CF_ERR_NETWORK_TIMEOUT   │ │
+│  │               └── 其他 → 继续                                            │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  返回结果:                                                                    │
+│    ├── CRL不为空 → CF_SUCCESS                                                │
+│    ├── 超时 → CF_ERR_NETWORK_TIMEOUT                                         │
+│    └── 其他 → CF_ERR_CRL_NOT_FOUND                                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### 2.3.3.4 OCSP在线请求流程图
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         PerformOnlineOcspCheck()                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  remainingCount = MAX_TOTAL_DOWNLOAD_COUNT (6)                               │
+│                                                                              │
+│  获取OCSP URL列表 (X509_get1_ocsp)                                           │
+│  创建OCSP请求 (使用配置的摘要算法)                                            │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │ 遍历每个OCSP URL: while (remainingCount > 0)                             │ │
+│  │   └── TrySingleOcspUrl()                                                 │ │
+│  │       ├── OCSP_parse_url() 解析URL                                       │ │
+│  │       ├── remainingCount--                                               │ │
+│  │       ├── CreateConnectBio() 建立连接                                    │ │
+│  │       │   └── BIO_do_connect_retry(bio, 3秒, 0)                          │ │
+│  │       │       ├── 成功 → 返回BIO                                         │ │
+│  │       │       ├── 超时 → CF_ERR_NETWORK_TIMEOUT                          │ │
+│  │       │       └── 其他 → CF_ERR_OCSP_RESPONSE_NOT_FOUND                  │ │
+│  │       │                                                                  │ │
+│  │       ├── SendOcspRequestWithTimeout() 发送请求                          │ │
+│  │       │   └── OSSL_HTTP_REQ_CTX_set_expected(..., 3秒) 设置响应超时      │ │
+│  │       │   └── OCSP_sendreq_nbio() 发送请求                               │ │
+│  │       │       ├── 成功 → 返回响应                                        │ │
+│  │       │       ├── 超时 → CF_ERR_NETWORK_TIMEOUT                          │ │
+│  │       │       └── 其他 → CF_ERR_OCSP_RESPONSE_NOT_FOUND                  │ │
+│  │       │                                                                  │ │
+│  │       └── VerifyOnlineOcspResponse() 验证响应                            │ │
+│  │           ├── OCSP_basic_verify() 验证签名                               │ │
+│  │           └── 获取证书状态                                               │ │
+│  │               ├── V_OCSP_CERTSTATUS_GOOD → CF_SUCCESS                    │ │
+│  │               ├── V_OCSP_CERTSTATUS_REVOKED → CF_ERR_CERT_REVOKED        │ │
+│  │               └── V_OCSP_CERTSTATUS_UNKNOWN → CF_ERR_OCSP_CERT_STATUS_   │ │
+│  │                   UNKNOWN                                                │ │
+│  │                                                                          │ │
+│  │   如果成功或REVOKED，退出循环                                             │ │
+│  │   如果超时或找不到响应，继续下一个URL                                      │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  返回最终结果                                                                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+##### 2.3.3.5 超时错误处理
+
+所有网络操作都会检测超时错误并返回统一的错误码：
+
+| OpenSSL错误原因 | 错误码含义 | 返回结果 |
+|-----------------|------------|----------|
+| `BIO_R_CONNECT_TIMEOUT` | TCP连接超时 | `CF_ERR_NETWORK_TIMEOUT` (-30030) |
+| `BIO_R_TRANSFER_TIMEOUT` | 数据传输超时 | `CF_ERR_NETWORK_TIMEOUT` (-30030) |
+
+**超时错误特点：**
+- 立即返回，不继续重试
+- 包含详细的错误信息
+- 错误信息中包含证书主题名称
+
+#### 2.3.4 内存管理
 
 | 资源 | 分配时机 | 释放函数 |
 |------|----------|----------|
@@ -1012,11 +1417,14 @@ static CfResult ConstructTrustedStore(const HcfX509CertValidatorParams *params,
 | 参数内存 | BuildX509CertValidatorParams | FreeX509CertValidatorParams() |
 | 结果内存 | FillVerifyCertResult | 用户调用destroy |
 
-#### 2.3.4 安全考虑
+#### 2.3.5 安全考虑
 
 **已实现的安全措施：**
-- DoS防护：下载次数限制为 6 次
-- 超时控制：单次下载 5 秒超时
+- DoS防护：
+  - 中间CA下载：最多5次
+  - CRL下载：最多6次
+  - OCSP请求：最多6次
+- 超时控制：所有网络操作均为3秒超时
 - 参数控制：默认不启用自动下载，需显式设置
 - 吊销检查：支持CRL和OCSP双重验证
 - 自签名证书：自动跳过吊销检查
