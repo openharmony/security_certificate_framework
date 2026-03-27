@@ -226,6 +226,33 @@ static napi_value CreateValidationKeyUsageType(napi_env env)
     return ValidationKeyUsageType;
 }
 
+static napi_value CreateCertRevocationFlag(napi_env env)
+{
+    napi_value certRevocationFlag = nullptr;
+    napi_create_object(env, &certRevocationFlag);
+
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_PREFER_OCSP", CERT_REVOCATION_PREFER_OCSP);
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_CRL_CHECK", CERT_REVOCATION_CRL_CHECK);
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_OCSP_CHECK", CERT_REVOCATION_OCSP_CHECK);
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_CHECK_ALL_CERT", CERT_REVOCATION_CHECK_ALL_CERT);
+
+    return certRevocationFlag;
+}
+
+static napi_value CreateOcspDigest(napi_env env)
+{
+    napi_value ocspDigest = nullptr;
+    napi_create_object(env, &ocspDigest);
+
+    CertAddUint32Property(env, ocspDigest, "SHA1", OCSP_DIGEST_SHA1);
+    CertAddUint32Property(env, ocspDigest, "SHA224", OCSP_DIGEST_SHA224);
+    CertAddUint32Property(env, ocspDigest, "SHA256", OCSP_DIGEST_SHA256);
+    CertAddUint32Property(env, ocspDigest, "SHA384", OCSP_DIGEST_SHA384);
+    CertAddUint32Property(env, ocspDigest, "SHA512", OCSP_DIGEST_SHA512);
+
+    return ocspDigest;
+}
+
 static void DefineOcspCheckOptionTypeProperties(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
@@ -246,6 +273,22 @@ static void DefineValidationKeyUsageTypeProperties(napi_env env, napi_value expo
 {
     napi_property_descriptor desc[] = {
         DECLARE_NAPI_PROPERTY("KeyUsageType", CreateValidationKeyUsageType(env)),
+    };
+    napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+}
+
+static void DefineCertRevocationFlagProperties(napi_env env, napi_value exports)
+{
+    napi_property_descriptor desc[] = {
+        DECLARE_NAPI_PROPERTY("CertRevocationFlag", CreateCertRevocationFlag(env)),
+    };
+    napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+}
+
+static void DefineOcspDigestProperties(napi_env env, napi_value exports)
+{
+    napi_property_descriptor desc[] = {
+        DECLARE_NAPI_PROPERTY("OcspDigest", CreateOcspDigest(env)),
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
 }
@@ -418,6 +461,8 @@ static napi_value CertModuleExport(napi_env env, napi_value exports)
     DefineOcspCheckOptionTypeProperties(env, exports);
     DefineValidationPolicyTypeProperties(env, exports);
     DefineValidationKeyUsageTypeProperties(env, exports);
+    DefineCertRevocationFlagProperties(env, exports);
+    DefineOcspDigestProperties(env, exports);
     DefineEncodingTypeProperties(env, exports);
     DefinePkcs12TypeProperties(env, exports);
     DefineCertCmsGeneratorProperties(env, exports);
