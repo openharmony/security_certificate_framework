@@ -700,6 +700,7 @@ static CfResult DownloadAndAddIntermediateCert(X509 *lastCert, STACK_OF(X509) *u
     CfResult res = CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY;
     int num = sk_ACCESS_DESCRIPTION_num(infoAccess);
     if (num <= 0) {
+        AUTHORITY_INFO_ACCESS_free(infoAccess);
         return ReturnVerifyError(CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY, "No AIA extension found in certificate.",
             result);
     }
