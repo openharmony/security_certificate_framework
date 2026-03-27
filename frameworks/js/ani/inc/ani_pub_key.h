@@ -33,6 +33,7 @@ public:
     string GetEncodedPem(string_view format);
     int64_t GetKeyObj();
     cryptoFramework::DataBlob GetEncoded();
+    array<uint8_t> GetKeyDataSync(cryptoFramework::AsyKeyDataItem itemType);
     string GetFormat();
     string GetAlgName();
 
