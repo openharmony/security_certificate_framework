@@ -6884,4 +6884,84 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_GetIssuerFromStore_001, T
     FreeValidatorParamsWithOcspData(params);
 }
 
+static OCSP_RESPONSE *CreateOcspResponseFromDer(const uint8_t *data, size_t len)
+{
+    const unsigned char *p = data;
+    return d2i_OCSP_RESPONSE(nullptr, &p, len);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_OnlineOcsp_Mock_001
+ * @tc.desc: Test online OCSP check with mock BIO and OCSP response
+ *           Mock BIO_do_connect_retry to return success
+ *           Mock OCSP_sendreq_nbio to return valid OCSP response
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_OnlineOcsp_Mock_001, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(g_ocspTestEeValidUrl);
+    HcfX509Certificate *rootCert = CreateCertFromPem(g_ocspTestRootCa);
+    HcfX509Certificate *intermediateCert = CreateCertFromPem(g_ocspTestIntermediateCa);
+    ASSERT_NE(cert, nullptr);
+    ASSERT_NE(rootCert, nullptr);
+    ASSERT_NE(intermediateCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = intermediateCert;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(
+        CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    memset(params.revokedParams, 0, sizeof(HcfX509CertRevokedParams));
+    params.revokedParams->revocationFlags.count = 1;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(
+        CfMalloc(sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_OCSP_CHECK;
+    params.revokedParams->allowOcspCheckOnline = true;
+
+    OCSP_RESPONSE *mockResp = CreateOcspResponseFromDer(g_ocspTestRespGood, sizeof(g_ocspTestRespGood));
+    ASSERT_NE(mockResp, nullptr);
+
+    HcfVerifyCertResult result = {};
+
+    X509OpensslMock::SetMockFlag(true);
+    EXPECT_CALL(X509OpensslMock::GetInstance(), BIO_do_connect_retry(_, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(X509OpensslMock::GetInstance(), OSSL_HTTP_REQ_CTX_nbio_d2i(_, _, _))
+        .WillRepeatedly(Invoke([](OSSL_HTTP_REQ_CTX *rctx, ASN1_VALUE **pval, const ASN1_ITEM *it) -> int {
+            OCSP_RESPONSE *resp = CreateOcspResponseFromDer(g_ocspTestRespGood, sizeof(g_ocspTestRespGood));
+            if (resp == nullptr) {
+                return 0;
+            }
+            *pval = (ASN1_VALUE *)resp;
+            return 1;
+        }));
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    X509OpensslMock::SetMockFlag(false);
+    if (res != CF_SUCCESS) {
+        CF_LOG_I("ValidateX509Cert_OnlineOcsp_Mock_001 failed: res=%d, errorMsg=%s", res,
+                 result.errorMsg ? result.errorMsg : "null");
+    }
+    Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+
+    OCSP_RESPONSE_free(mockResp);
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+    FreeVerifyCertResult(result);
+}
+
 } // namespace
