@@ -84,4 +84,10 @@ string PubKeyImpl::GetAlgName()
     ANI_LOGE_THROW(CF_NOT_SUPPORT, "GetAlgName not supported!");
     return "";
 }
+
+int PubKeyImpl::GetKeySize()
+{
+    ANI_LOGE_THROW(CF_NOT_SUPPORT, "GetKeySize not supported!");
+    return 0;
+}
 } // namespace ANI::CertFramework
