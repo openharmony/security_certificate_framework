@@ -35,6 +35,7 @@ public:
     cryptoFramework::DataBlob GetEncoded();
     string GetFormat();
     string GetAlgName();
+    int GetKeySize();
 
 private:
     HcfPubKey *pubKey_ = nullptr;
