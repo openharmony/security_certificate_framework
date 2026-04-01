@@ -735,7 +735,7 @@ HWTEST_F(CryptoX509CertChainTestPart2, HcfX509CertChainByParamsSpiCreateTest001,
 {
     CF_LOG_I("HcfX509CertChainByParamsSpiCreateTest001");
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -774,7 +774,7 @@ HWTEST_F(CryptoX509CertChainTestPart2, HcfX509CertChainByParamsSpiCreateInvalidP
 {
     CF_LOG_I("HcfX509CertChainByParamsSpiCreateInvalidParamTest");
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result = HcfX509CertChainByParamsSpiCreate(NULL, &spi);
@@ -791,7 +791,7 @@ HWTEST_F(CryptoX509CertChainTestPart2, HcfX509CertChainByParamsSpiCreateTest002,
 {
     CF_LOG_I("HcfX509CertChainByParamsSpiCreateTest002");
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     inParams.maxlength = -1;
@@ -850,7 +850,7 @@ HWTEST_F(CryptoX509CertChainTestPart2, HcfX509CertChainByParamsSpiCreateTest003,
 {
     CF_LOG_I("HcfX509CertChainByParamsSpiCreateTest003");
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -912,7 +912,7 @@ HWTEST_F(CryptoX509CertChainTestPart2, HcfCertChainBuildResultCreateTest001, Tes
 {
     CF_LOG_I("HcfCertChainBuildResultCreateTest001");
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainBuildResult *returnObj = nullptr;
     CfEncodingBlob inStream = { 0 };
     inStream.data = reinterpret_cast<uint8_t *>(const_cast<char *>(g_testSelfSignedCaCertValid));
