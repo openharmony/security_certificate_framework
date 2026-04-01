@@ -70,5 +70,85 @@ void FreeX509CertChainValidateResult(HcfX509CertChainValidateResult &param, bool
     }
     param.entityCert = nullptr;
 }
+
+CfResult BuildVerifyCertResultJS(napi_env env, HcfVerifyCertResult *result,
+    CfObject **certObj, uint32_t certObjCount, napi_value *outValue)
+{
+    if (result == nullptr || result->certs.data == nullptr || certObj == nullptr || outValue == nullptr) {
+        LOGE("result, certs.data, certObj or outValue is nullptr");
+        return CF_INVALID_PARAMS;
+    }
+    if (result->certs.count != certObjCount) {
+        LOGE("certs count mismatch: %{public}u vs %{public}u", result->certs.count, certObjCount);
+        return CF_INVALID_PARAMS;
+    }
+
+    napi_value certChainArray = nullptr;
+    napi_create_array(env, &certChainArray);
+    if (certChainArray == nullptr) {
+        LOGE("create certChain array failed");
+        return CF_ERR_NAPI;
+    }
+
+    for (uint32_t i = 0; i < result->certs.count; i++) {
+        napi_value napiCert = nullptr;
+        CfResult ret = ConvertCertToNapiValueEx(env, &result->certs.data[i], &certObj[i], &napiCert);
+        if (ret != CF_SUCCESS || napiCert == nullptr) {
+            LOGE("convert cert to napi value failed at index %{public}u", i);
+            /* Note: ownership of previously converted certs has been transferred to certChainArray.
+             * certChainArray will be garbage collected by JS engine since it's not returned. */
+            return ret;
+        }
+        napi_status status = napi_set_element(env, certChainArray, i, napiCert);
+        if (status != napi_ok) {
+            LOGE("set element to array failed at index %{public}u", i);
+            /* Ownership already transferred to napiCert, it will be garbage collected. */
+            return CF_ERR_NAPI;
+        }
+    }
+
+    napi_value returnValue = nullptr;
+    napi_create_object(env, &returnValue);
+    if (returnValue == nullptr) {
+        LOGE("create result obj failed");
+        return CF_ERR_NAPI;
+    }
+    napi_status status = napi_set_named_property(env, returnValue,
+        VERIFY_CERT_RESULT_TAG_CERTCHAIN.c_str(), certChainArray);
+    if (status != napi_ok) {
+        LOGE("set named property failed");
+        return CF_ERR_NAPI;
+    }
+
+    *outValue = returnValue;
+    return CF_SUCCESS;
+}
+
+void FreeVerifyCertResult(HcfVerifyCertResult &param, CfObject **certObj, uint32_t certObjCount)
+{
+    if (param.certs.data != nullptr) {
+        for (uint32_t i = 0; i < param.certs.count; i++) {
+            /* Always destroy if not null (ownership not transferred) */
+            if (param.certs.data[i] != nullptr) {
+                CfObjDestroy(param.certs.data[i]);
+                param.certs.data[i] = nullptr;
+            }
+        }
+        CfFree(param.certs.data);
+        param.certs.data = nullptr;
+    }
+    param.certs.count = 0;
+
+    /* Free certObj array */
+    if (certObj != nullptr) {
+        for (uint32_t i = 0; i < certObjCount; i++) {
+            if (certObj[i] != nullptr) {
+                certObj[i]->destroy(&certObj[i]);
+            }
+        }
+        CfFree(certObj);
+    }
+}
+
 } // namespace CertFramework
 } // namespace OHOS
