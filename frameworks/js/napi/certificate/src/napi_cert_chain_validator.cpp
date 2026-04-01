@@ -299,6 +299,45 @@ static void ValidateX509CertComplete(napi_env env, napi_status status, void *dat
     FreeValidateX509CertCtxComplete(env, context);
 }
 
+static ValidateX509CertCtx *CreateValidateX509CertContext(napi_env env, napi_value thisVar,
+    napi_value certArg, napi_value paramsArg, NapiCertChainValidator *validator)
+{
+    ValidateX509CertCtx *context = static_cast<ValidateX509CertCtx *>(CfMallocEx(sizeof(ValidateX509CertCtx)));
+    if (context == nullptr) {
+        LOGE("malloc context failed!");
+        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_MALLOC, "Failed to allocate memory"));
+        return nullptr;
+    }
+    context->ccvClass = validator;
+    NapiX509Certificate *napiCert = nullptr;
+    napi_unwrap(env, certArg, reinterpret_cast<void **>(&napiCert));
+    if (napiCert == nullptr) {
+        LOGE("napi cert object is nullptr!");
+        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_PARAMETER_CHECK, "Invalid certificate parameter"));
+        CfFree(context);
+        return nullptr;
+    }
+    context->cert = napiCert->GetX509Cert();
+    char *errMsg = nullptr;
+    CfResult ret = BuildX509CertValidatorParams(env, paramsArg, context->params, &errMsg);
+    if (ret != CF_SUCCESS) {
+        const char *finalErrMsg = errMsg ? errMsg : "Build validator params failed!";
+        LOGE("Build validator params failed: %{public}s", finalErrMsg);
+        napi_throw(env, CertGenerateBusinessError(env, ret, finalErrMsg));
+        if (errMsg) {
+            CfFree(errMsg);
+        }
+        CfFree(context);
+        return nullptr;
+    }
+    if (!CreateValidateX509CertRefs(env, thisVar, certArg, paramsArg, context)) {
+        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "Failed to create reference"));
+        FreeValidateX509CertCtxComplete(env, context);
+        return nullptr;
+    }
+    return context;
+}
+
 napi_value NapiCertChainValidator::ValidateX509Cert(napi_env env, napi_callback_info info)
 {
     size_t argc = ARGS_SIZE_TWO;
@@ -309,64 +348,22 @@ napi_value NapiCertChainValidator::ValidateX509Cert(napi_env env, napi_callback_
         napi_throw(env, CertGenerateBusinessError(env, CF_INVALID_PARAMS, "Invalid parameter count"));
         return nullptr;
     }
-
-    ValidateX509CertCtx *context = static_cast<ValidateX509CertCtx *>(CfMallocEx(sizeof(ValidateX509CertCtx)));
+    ValidateX509CertCtx *context = CreateValidateX509CertContext(env, thisVar, argv[PARAM0], argv[PARAM1], this);
     if (context == nullptr) {
-        LOGE("malloc context failed!");
-        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_MALLOC, "Failed to allocate memory"));
         return nullptr;
     }
-    context->ccvClass = this;
-
-    /* Get cert from first argument */
-    NapiX509Certificate *napiCert = nullptr;
-    napi_unwrap(env, argv[PARAM0], reinterpret_cast<void **>(&napiCert));
-    if (napiCert == nullptr) {
-        LOGE("napi cert object is nullptr!");
-        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_PARAMETER_CHECK, "Invalid certificate parameter"));
-        CfFree(context);
-        return nullptr;
-    }
-    context->cert = napiCert->GetX509Cert();
-
-    /* Build validator params from second argument */
-    char *errMsg = nullptr;
-    CfResult ret = BuildX509CertValidatorParams(env, argv[PARAM1], context->params, &errMsg);
-    if (ret != CF_SUCCESS) {
-        const char *finalErrMsg = errMsg ? errMsg : "Build validator params failed!";
-        LOGE("Build validator params failed: %{public}s", finalErrMsg);
-        napi_throw(env, CertGenerateBusinessError(env, ret, finalErrMsg));
-        if (errMsg) {
-            CfFree(errMsg);
-            errMsg = nullptr;
-        }
-        CfFree(context);
-        return nullptr;
-    }
-
-    /* Create references to prevent GC during async work */
-    if (!CreateValidateX509CertRefs(env, thisVar, argv[PARAM0], argv[PARAM1], context)) {
-        napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "Failed to create reference"));
-        FreeValidateX509CertCtxComplete(env, context);
-        return nullptr;
-    }
-
     napi_value promise = nullptr;
     napi_create_promise(env, &context->deferred, &promise);
-
     napi_status status = napi_create_async_work(
         env, nullptr, CertGetResourceName(env, "ValidateX509Cert"),
-        ValidateX509CertExecute,
-        ValidateX509CertComplete,
-        static_cast<void *>(context),
-        &context->asyncWork);
+        ValidateX509CertExecute, ValidateX509CertComplete,
+        static_cast<void *>(context), &context->asyncWork);
     if (status != napi_ok) {
         LOGE("create async work failed!");
         napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "create async work failed"));
         FreeValidateX509CertCtxComplete(env, context);
         return nullptr;
     }
-
     status = napi_queue_async_work(env, context->asyncWork);
     if (status != napi_ok) {
         LOGE("queue async work failed!");
