@@ -70,7 +70,24 @@ static napi_value CreateCertResultCode(napi_env env)
         JS_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY);
     CertAddUint32Property(env, resultCode, "ERR_KEYUSAGE_NO_CERTSIGN", JS_ERR_KEYUSAGE_NO_CERTSIGN);
     CertAddUint32Property(env, resultCode, "ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE", JS_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE);
-    CertAddUint32Property(env, resultCode, "ERR_MAYBE_WRONG_PASSWORD", JS_ERR_CERT_INVALID_PRIVATE_KEY);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_INVALID_PRIVATE_KEY", JS_ERR_CERT_INVALID_PRIVATE_KEY);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_UNTRUSTED", JS_ERR_CERT_UNTRUSTED);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_REVOKED", JS_ERR_CERT_REVOKED);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_UNKNOWN_CRITICAL_EXTENSION",
+        JS_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_HOST_NAME_MISMATCH", JS_ERR_CERT_HOST_NAME_MISMATCH);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_EMAIL_MISMATCH", JS_ERR_CERT_EMAIL_MISMATCH);
+    CertAddUint32Property(env, resultCode, "ERR_CERT_KEY_USAGE_MISMATCH", JS_ERR_CERT_KEY_USAGE_MISMATCH);
+    CertAddUint32Property(env, resultCode, "ERR_CRL_NOT_FOUND", JS_ERR_CRL_NOT_FOUND);
+    CertAddUint32Property(env, resultCode, "ERR_CRL_NOT_YET_VALID", JS_ERR_CRL_NOT_YET_VALID);
+    CertAddUint32Property(env, resultCode, "ERR_CRL_HAS_EXPIRED", JS_ERR_CRL_HAS_EXPIRED);
+    CertAddUint32Property(env, resultCode, "ERR_CRL_SIGNATURE_FAILURE", JS_ERR_CRL_SIGNATURE_FAILURE);
+    CertAddUint32Property(env, resultCode, "ERR_UNABLE_TO_GET_CRL_ISSUER", JS_ERR_UNABLE_TO_GET_CRL_ISSUER);
+    CertAddUint32Property(env, resultCode, "ERR_OCSP_RESPONSE_NOT_FOUND", JS_ERR_OCSP_RESPONSE_NOT_FOUND);
+    CertAddUint32Property(env, resultCode, "ERR_OCSP_RESPONSE_INVALID", JS_ERR_OCSP_RESPONSE_INVALID);
+    CertAddUint32Property(env, resultCode, "ERR_OCSP_SIGNATURE_FAILURE", JS_ERR_OCSP_SIGNATURE_FAILURE);
+    CertAddUint32Property(env, resultCode, "ERR_OCSP_CERT_STATUS_UNKNOWN", JS_ERR_OCSP_CERT_STATUS_UNKNOWN);
+    CertAddUint32Property(env, resultCode, "ERR_NETWORK_TIMEOUT", JS_ERR_NETWORK_TIMEOUT);
     return resultCode;
 }
 
@@ -226,6 +243,33 @@ static napi_value CreateValidationKeyUsageType(napi_env env)
     return ValidationKeyUsageType;
 }
 
+static napi_value CreateCertRevocationFlag(napi_env env)
+{
+    napi_value certRevocationFlag = nullptr;
+    napi_create_object(env, &certRevocationFlag);
+
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_PREFER_OCSP", CERT_REVOCATION_PREFER_OCSP);
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_CRL_CHECK", CERT_REVOCATION_CRL_CHECK);
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_OCSP_CHECK", CERT_REVOCATION_OCSP_CHECK);
+    CertAddUint32Property(env, certRevocationFlag, "CERT_REVOCATION_CHECK_ALL_CERT", CERT_REVOCATION_CHECK_ALL_CERT);
+
+    return certRevocationFlag;
+}
+
+static napi_value CreateOcspDigest(napi_env env)
+{
+    napi_value ocspDigest = nullptr;
+    napi_create_object(env, &ocspDigest);
+
+    CertAddUint32Property(env, ocspDigest, "SHA1", OCSP_DIGEST_SHA1);
+    CertAddUint32Property(env, ocspDigest, "SHA224", OCSP_DIGEST_SHA224);
+    CertAddUint32Property(env, ocspDigest, "SHA256", OCSP_DIGEST_SHA256);
+    CertAddUint32Property(env, ocspDigest, "SHA384", OCSP_DIGEST_SHA384);
+    CertAddUint32Property(env, ocspDigest, "SHA512", OCSP_DIGEST_SHA512);
+
+    return ocspDigest;
+}
+
 static void DefineOcspCheckOptionTypeProperties(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
@@ -246,6 +290,22 @@ static void DefineValidationKeyUsageTypeProperties(napi_env env, napi_value expo
 {
     napi_property_descriptor desc[] = {
         DECLARE_NAPI_PROPERTY("KeyUsageType", CreateValidationKeyUsageType(env)),
+    };
+    napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+}
+
+static void DefineCertRevocationFlagProperties(napi_env env, napi_value exports)
+{
+    napi_property_descriptor desc[] = {
+        DECLARE_NAPI_PROPERTY("CertRevocationFlag", CreateCertRevocationFlag(env)),
+    };
+    napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+}
+
+static void DefineOcspDigestProperties(napi_env env, napi_value exports)
+{
+    napi_property_descriptor desc[] = {
+        DECLARE_NAPI_PROPERTY("OcspDigest", CreateOcspDigest(env)),
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
 }
@@ -418,6 +478,8 @@ static napi_value CertModuleExport(napi_env env, napi_value exports)
     DefineOcspCheckOptionTypeProperties(env, exports);
     DefineValidationPolicyTypeProperties(env, exports);
     DefineValidationKeyUsageTypeProperties(env, exports);
+    DefineCertRevocationFlagProperties(env, exports);
+    DefineOcspDigestProperties(env, exports);
     DefineEncodingTypeProperties(env, exports);
     DefinePkcs12TypeProperties(env, exports);
     DefineCertCmsGeneratorProperties(env, exports);

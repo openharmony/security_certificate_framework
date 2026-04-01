@@ -18,12 +18,21 @@
 
 #include "x509_certificate.h"
 #include "x509_certificate_spi.h"
+#include "x509_crl.h"
+#include "x509_crl_spi.h"
 
 typedef struct {
     HcfX509Certificate base;
     HcfX509CertificateSpi *spiObj;
 } HcfX509CertificateImpl;
 
+typedef struct {
+    HcfX509Crl base;
+    HcfX509CrlSpi *spiObj;
+    const char *certType;
+} HcfX509CrlImpl;
+
 #define HCF_X509_CERTIFICATE_CLASS "HcfX509Certificate"
+#define HCF_X509_CRL_CLASS "HcfX509Crl"
 
 #endif
