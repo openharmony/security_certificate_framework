@@ -20,21 +20,15 @@
 #include "cf_log.h"
 #include "cf_memory.h"
 #include "config.h"
+#include "fwk_class.h"
 #include "utils.h"
 #include "x509_crl_match_parameters.h"
 #include "x509_crl_openssl.h"
 #include "x509_crl_spi.h"
 
-#define HCF_X509_CRL_CLASS "HcfX509Crl"
 #define OPENSSL_INVALID_VERSION (-1)
 
 typedef CfResult (*HcfX509CrlSpiCreateFunc)(const CfEncodingBlob *, HcfX509CrlSpi **);
-
-typedef struct {
-    HcfX509Crl base;
-    HcfX509CrlSpi *spiObj;
-    const char *certType;
-} HcfX509CrlImpl;
 
 typedef struct {
     HcfX509CrlSpiCreateFunc createFunc;
