@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2025 Huawei Device Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -85,13 +85,15 @@ VerifyCertResult CertChainValidatorImpl::ValidateCertSync(weak::X509Cert cert, X
         return make_holder<VerifyCertResultImpl, VerifyCertResult>();
     }
     HcfX509CertValidatorParams hcfParams = {};
-    if (!BuildX509CertValidatorParams(params, hcfParams)) {
+    const char *errMsg = nullptr;
+    CfResult res = BuildX509CertValidatorParams(params, hcfParams, errMsg);
+    if (res != CF_SUCCESS) {
         FreeX509CertValidatorParams(hcfParams);
-        ANI_LOGE_THROW(CF_ERR_PARAMETER_CHECK, "build validator params failed");
+        ANI_LOGE_THROW(res, errMsg != nullptr ? errMsg : "build validator params failed");
         return make_holder<VerifyCertResultImpl, VerifyCertResult>();
     }
     HcfVerifyCertResult result = {};
-    CfResult res = this->certChainValidator_->validateX509Cert(
+    res = this->certChainValidator_->validateX509Cert(
         this->certChainValidator_, x509Cert, &hcfParams, &result);
     FreeX509CertValidatorParams(hcfParams);
     if (res != CF_SUCCESS) {

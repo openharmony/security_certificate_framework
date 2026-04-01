@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -65,7 +65,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_017, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
 
     /* OCSP online check timeout due to unreachable server */
     EXPECT_EQ(res, CF_ERR_NETWORK_TIMEOUT);
@@ -559,7 +558,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Error_005, Tes
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
+
 
     /* CRL download should fail with network timeout since URL is unreachable */
     EXPECT_EQ(res, CF_ERR_NETWORK_TIMEOUT);
@@ -746,7 +745,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Mock_003, Test
         .WillRepeatedly(Return(nullptr));
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
-    (void)res;
+
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
 
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
@@ -802,7 +801,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Mock_003_1, Te
         .WillRepeatedly(Return(static_cast<unsigned long>(BIO_R_CONNECT_TIMEOUT)));
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
-    (void)res;
+
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
 
     EXPECT_EQ(res, CF_ERR_NETWORK_TIMEOUT);
@@ -869,9 +868,9 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Mock_003_2, Te
         .WillRepeatedly(WithoutArgs(Invoke([mockCrl]() -> X509_CRL* {
             return X509_CRL_dup(mockCrl);
         })));
-    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+    (void)g_validator->validateX509Cert(g_validator, cert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
-    (void)res;
+
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
 
     X509_CRL_free(mockCrl);
@@ -924,7 +923,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_Mock_004, Test
         .WillOnce(Return(nullptr));
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
-    (void)res;
+
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
 
     EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);

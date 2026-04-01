@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2023-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -165,6 +165,7 @@ const std::string CERT_VALIDATOR_TAG_IGNORE_ERRS = "ignoreErrs";
 const std::string CERT_VALIDATOR_TAG_HOSTNAMES = "hostnames";
 const std::string CERT_VALIDATOR_TAG_EMAIL_ADDRESSES = "emailAddresses";
 const std::string CERT_VALIDATOR_TAG_KEY_USAGE = "keyUsage";
+const std::string CERT_VALIDATOR_TAG_USER_ID = "userId";
 const std::string CERT_VALIDATOR_TAG_REVOKED_PARAMS = "revokedParams";
 // X509CertRevokedParams
 const std::string CERT_REVOKED_TAG_REVOCATION_FLAGS = "revocationFlags";
