@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -591,8 +591,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_015, TestSize.Level0)
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     /* Email validation should fail since cert doesn't have the email address */
     EXPECT_EQ(res, CF_ERR_CERT_EMAIL_MISMATCH);
 
@@ -709,7 +707,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_020, TestSize.Level0)
     SetMockFlag(true);
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
     SetMockFlag(false);
-    (void)res;
 
     /* Memory allocation failure should return error */
     EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
@@ -842,7 +839,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_022, TestSize.Level0)
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
 
     /* Should return CF_ERR_PARAMETER_CHECK for too many emailAddresses */
     EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
@@ -883,7 +879,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_023, TestSize.Level0)
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
 
     /* Should return CF_ERR_PARAMETER_CHECK for invalid date format */
     EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
@@ -927,7 +922,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_024, TestSize.Level0)
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
 
     /* Should return CF_ERR_CERT_HOST_NAME_MISMATCH */
     EXPECT_EQ(res, CF_ERR_CERT_HOST_NAME_MISMATCH);
@@ -971,7 +965,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_025, TestSize.Level0)
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
 
     /* Should return CF_ERR_CERT_EMAIL_MISMATCH */
     EXPECT_EQ(res, CF_ERR_CERT_EMAIL_MISMATCH);
@@ -1022,7 +1015,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_026, TestSize.Level0)
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
 
     /* End-entity cert should NOT have keyCertSign, so this should return mismatch */
     EXPECT_EQ(res, CF_ERR_CERT_KEY_USAGE_MISMATCH);
@@ -1161,4 +1153,315 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_027_3, TestSize.Level0)
     CfObjDestroy(cert);
     FreeValidatorParams(params);
 }
+
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_028, TestSize.Level0)
+{
+    HcfX509Certificate *cert = CreateCertFromPem(TEST_END_ENTITY_CERT);
+    ASSERT_NE(cert, nullptr);
+    HcfX509Certificate *certSelf = CreateCertFromPem(TEST_END_ENTITY_CERT);
+    ASSERT_NE(certSelf, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+    params.partialChain = true;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = certSelf;
+
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    params.revokedParams->revocationFlags.count = 3;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(CfMalloc(3 * sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_PREFER_OCSP;
+    params.revokedParams->revocationFlags.data[2] = CERT_REVOCATION_OCSP_CHECK;
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
+
+    /* End-entity cert should NOT have keyCertSign, so this should return mismatch */
+    EXPECT_EQ(res, CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY);
+    printf("result errorMsg = %s\n", result.errorMsg);
+    CfObjDestroy(cert);
+    FreeValidatorParams(params);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_SM2_001
+ * @tc.desc: Test validateX509Cert with SM2 certificate chain
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_SM2_001, TestSize.Level0)
+{
+    HcfX509Certificate *signCert = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCert, nullptr);
+
+    HcfX509Certificate *interCert = CreateCertFromPem(SM2_INTER_CERT);
+    ASSERT_NE(interCert, nullptr);
+
+    HcfX509Certificate *rootCert = CreateCertFromPem(SM2_ROOT_CERT);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = interCert;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, signCert, &params, &result);
+
+    EXPECT_EQ(res, CF_ERR_CERT_SIGNATURE_FAILURE);
+    CfObjDestroy(signCert);
+    FreeValidatorParams(params);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_SM2_002
+ * @tc.desc: Test validateX509Cert with SM2 certificate chain
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_SM2_002, TestSize.Level0)
+{
+    HcfX509Certificate *signCert = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCert, nullptr);
+
+    HcfX509Certificate *interCert = CreateCertFromPem(SM2_INTER_CERT);
+    ASSERT_NE(interCert, nullptr);
+
+    HcfX509Certificate *rootCert = CreateCertFromPem(SM2_ROOT_CERT);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = interCert;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    static const uint8_t userIdData[] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                                          0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38};
+    params.userId.data = const_cast<uint8_t *>(userIdData);
+    params.userId.size = sizeof(userIdData);
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, signCert, &params, &result);
+
+    EXPECT_EQ(res, CF_SUCCESS);
+    EXPECT_EQ(result.certs.count, 3);
+    FreeVerifyCertResult(result);
+
+    CfObjDestroy(signCert);
+    FreeValidatorParams(params);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_SM2_003
+ * @tc.desc: Test validateX509Cert with SM2 certificate chain
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_SM2_003, TestSize.Level0)
+{
+    HcfX509Certificate *signCert = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCert, nullptr);
+
+    HcfX509Certificate *interCert = CreateCertFromPem(SM2_INTER_CERT);
+    ASSERT_NE(interCert, nullptr);
+
+    HcfX509Certificate *rootCert = CreateCertFromPem(SM2_ROOT_CERT);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = interCert;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    static const uint8_t userIdData[] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                                          0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38};
+    params.userId.data = const_cast<uint8_t *>(userIdData);
+    params.userId.size = sizeof(userIdData);
+    params.revokedParams = static_cast<HcfX509CertRevokedParams *>(CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
+    ASSERT_NE(params.revokedParams, nullptr);
+    params.revokedParams->revocationFlags.count = 3;
+    params.revokedParams->revocationFlags.data = static_cast<int32_t *>(CfMalloc(3 * sizeof(int32_t), 0));
+    ASSERT_NE(params.revokedParams->revocationFlags.data, nullptr);
+    params.revokedParams->revocationFlags.data[0] = CERT_REVOCATION_PREFER_OCSP;
+    params.revokedParams->revocationFlags.data[1] = CERT_REVOCATION_CRL_CHECK;
+    params.revokedParams->revocationFlags.data[2] = CERT_REVOCATION_OCSP_CHECK;
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, signCert, &params, &result);
+
+    EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
+    CfObjDestroy(signCert);
+    FreeValidatorParams(params);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_SM2_004
+ * @tc.desc: Test validateX509Cert with SM2 certificate chain
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_SM2_004, TestSize.Level0)
+{
+    HcfX509Certificate *signCert = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCert, nullptr);
+
+    HcfX509Certificate *interCert = CreateCertFromPem(SM2_INTER_CERT);
+    ASSERT_NE(interCert, nullptr);
+
+    HcfX509Certificate *rootCert = CreateCertFromPem(SM2_ROOT_CERT);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = interCert;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = rootCert;
+
+    static const uint8_t userIdData[] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                                          0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39};
+    params.userId.data = const_cast<uint8_t *>(userIdData);
+    params.userId.size = sizeof(userIdData);
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, signCert, &params, &result);
+    EXPECT_EQ(res, CF_ERR_CERT_SIGNATURE_FAILURE);
+
+    CfObjDestroy(signCert);
+    FreeValidatorParams(params);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_SM2_005
+ * @tc.desc: Test validateX509Cert with SM2 certificate chain
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_SM2_005, TestSize.Level0)
+{
+    HcfX509Certificate *signCert = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCert, nullptr);
+
+    HcfX509Certificate *interCert = CreateCertFromPem(SM2_INTER_CERT);
+    ASSERT_NE(interCert, nullptr);
+
+    HcfX509Certificate *rootCert = CreateCertFromPem(SM2_ROOT_CERT);
+    ASSERT_NE(rootCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+    params.partialChain = true;
+
+    params.trustedCerts.count = 2;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *) * 2, 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = interCert;
+    params.trustedCerts.data[1] = rootCert;
+
+    static const uint8_t userIdData[] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                                          0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38};
+    params.userId.data = const_cast<uint8_t *>(userIdData);
+    params.userId.size = sizeof(userIdData);
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, signCert, &params, &result);
+    EXPECT_EQ(res, CF_SUCCESS);
+    EXPECT_EQ(result.certs.count, 2);
+    FreeVerifyCertResult(result);
+
+    CfObjDestroy(signCert);
+    FreeValidatorParams(params);
+}
+
+/**
+ * @tc.name: ValidateX509Cert_SM2_006
+ * @tc.desc: Test validateX509Cert with SM2 certificate chain
+ * @tc.type: FUNC
+ */
+HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_SM2_006, TestSize.Level0)
+{
+    HcfX509Certificate *signCert = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCert, nullptr);
+    HcfX509Certificate *signCertSelf = CreateCertFromPem(SM2_SIGN_CERT);
+    ASSERT_NE(signCertSelf, nullptr);
+
+    HcfX509Certificate *interCert = CreateCertFromPem(SM2_INTER_CERT);
+    ASSERT_NE(interCert, nullptr);
+
+    HcfX509CertValidatorParams params = {};
+    params.trustSystemCa = false;
+    params.validateDate = false;
+    params.partialChain = true;
+
+    params.untrustedCerts.count = 1;
+    params.untrustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *), 0));
+    ASSERT_NE(params.untrustedCerts.data, nullptr);
+    params.untrustedCerts.data[0] = interCert;
+
+    params.trustedCerts.count = 1;
+    params.trustedCerts.data = static_cast<HcfX509Certificate **>(
+        CfMalloc(sizeof(HcfX509Certificate *) * 1, 0));
+    ASSERT_NE(params.trustedCerts.data, nullptr);
+    params.trustedCerts.data[0] = signCertSelf;
+
+    static const uint8_t userIdData[] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                                          0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38};
+    params.userId.data = const_cast<uint8_t *>(userIdData);
+    params.userId.size = sizeof(userIdData);
+
+    HcfVerifyCertResult result = {};
+    CfResult res = g_validator->validateX509Cert(g_validator, signCert, &params, &result);
+    EXPECT_EQ(res, CF_SUCCESS);
+    EXPECT_EQ(result.certs.count, 1);
+    FreeVerifyCertResult(result);
+
+    CfObjDestroy(signCert);
+    FreeValidatorParams(params);
+}
+
 }

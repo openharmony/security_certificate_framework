@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -82,7 +82,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_BranchCoverage_002, TestS
         CfMalloc(sizeof(HcfX509Certificate *), 0));; ASSERT_NE(result.certs.data, nullptr);
 
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
+
     EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
 
     CfFree(result.certs.data);
@@ -520,8 +520,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_LocalOcsp_002, TestSize.L
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CERT_REVOKED);
     EXPECT_NE(result.errorMsg, nullptr);
 
@@ -718,8 +716,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_GetIssuerFromStore_001, T
     params.revokedParams->ocspResponses.data[0].size = OCSP_TEST_RESP_GOOD_SIZE;
 
     HcfVerifyCertResult result = {};
-    CfResult res = g_validator->validateX509Cert(g_validator, eeCert, &params, &result);
-    (void)res;
+    (void)g_validator->validateX509Cert(g_validator, eeCert, &params, &result);
 
     CfObjDestroy(eeCert);
     FreeVerifyCertResult(result);
@@ -789,8 +786,8 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_OnlineOcsp_Mock_001, Test
         }));
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
-    (void)res;
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
+    (void)res;
 
     OCSP_RESPONSE_free(mockResp);
     CfObjDestroy(cert);
@@ -1070,7 +1067,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_ValidateDate_001, TestSiz
     HcfVerifyCertResult result = {};
 
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
     EXPECT_EQ(res, CF_ERR_CERT_HAS_EXPIRED);
 
     CfObjDestroy(cert);
@@ -1129,7 +1125,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_CrlCheck_WithLocalCrl_001
     HcfVerifyCertResult result = {};
 
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
     EXPECT_EQ(res, CF_ERR_CERT_REVOKED);
 
     CfObjDestroy(cert);
@@ -1169,8 +1164,7 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_ValidateDate_NoDateParam_
 
     HcfVerifyCertResult result = {};
 
-    CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
+    (void)g_validator->validateX509Cert(g_validator, cert, &params, &result);
 
     CfObjDestroy(cert);
     FreeValidatorParams(params);
