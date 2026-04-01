@@ -15,8 +15,32 @@
 
 #include "cert_chain_validator.h"
 #include "ani_cert_chain_validator.h"
+#include "ani_parameters.h"
+#include "ani_x509_cert.h"
 
 namespace ANI::CertFramework {
+VerifyCertResultImpl::VerifyCertResultImpl() {}
+
+VerifyCertResultImpl::VerifyCertResultImpl(HcfX509CertificateArray result) : result_(result) {}
+
+VerifyCertResultImpl::~VerifyCertResultImpl()
+{
+    for (uint32_t i = 0; i < result_.count; ++i) {
+        CfObjDestroy(result_.data[i]);
+        result_.data[i] = nullptr;
+    }
+    CF_FREE_PTR(result_.data);
+}
+
+array<X509Cert> VerifyCertResultImpl::GetCertChain()
+{
+    array<X509Cert> certChain(result_.count, make_holder<X509CertImpl, X509Cert>());
+    for (uint32_t i = 0; i < result_.count; ++i) {
+        certChain[i] = make_holder<X509CertImpl, X509Cert>(result_.data[i], false);
+    }
+    return certChain;
+}
+
 CertChainValidatorImpl::CertChainValidatorImpl() {}
 
 CertChainValidatorImpl::CertChainValidatorImpl(HcfCertChainValidator *certChainValidator)
@@ -47,6 +71,35 @@ void CertChainValidatorImpl::ValidateSync(CertChainData const& certChain)
         ANI_LOGE_THROW(res, "validate cert chain failed");
         return;
     }
+}
+
+VerifyCertResult CertChainValidatorImpl::ValidateCertSync(weak::X509Cert cert, X509CertValidatorParams const& params)
+{
+    if (this->certChainValidator_ == nullptr) {
+        ANI_LOGE_THROW(CF_ERR_ANI, "certChainValidator obj is nullptr!");
+        return make_holder<VerifyCertResultImpl, VerifyCertResult>();
+    }
+    HcfX509Certificate *x509Cert = reinterpret_cast<HcfX509Certificate *>(cert->GetX509CertObj());
+    if (x509Cert == nullptr) {
+        ANI_LOGE_THROW(CF_ERR_PARAMETER_CHECK, "cert is nullptr!");
+        return make_holder<VerifyCertResultImpl, VerifyCertResult>();
+    }
+    HcfX509CertValidatorParams hcfParams = {};
+    if (!BuildX509CertValidatorParams(params, hcfParams)) {
+        FreeX509CertValidatorParams(hcfParams);
+        ANI_LOGE_THROW(CF_ERR_PARAMETER_CHECK, "build validator params failed");
+        return make_holder<VerifyCertResultImpl, VerifyCertResult>();
+    }
+    HcfVerifyCertResult result = {};
+    CfResult res = this->certChainValidator_->validateX509Cert(
+        this->certChainValidator_, x509Cert, &hcfParams, &result);
+    FreeX509CertValidatorParams(hcfParams);
+    if (res != CF_SUCCESS) {
+        FreeVerifyCertResult(result);
+        ANI_LOGE_THROW(res, result.errorMsg != nullptr ? result.errorMsg : "validate cert failed");
+        return make_holder<VerifyCertResultImpl, VerifyCertResult>();
+    }
+    return make_holder<VerifyCertResultImpl, VerifyCertResult>(result.certs);
 }
 
 string CertChainValidatorImpl::GetAlgorithm()

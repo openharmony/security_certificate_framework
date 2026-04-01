@@ -33,13 +33,6 @@
 #include "x509_crl_entry_openssl.h"
 #include "x509_crl_spi.h"
 
-typedef struct {
-    HcfX509CrlSpi base;
-    X509_CRL *crl;
-    CfBlob *certIssuer;
-    CfBlob *certIssuerUtf8;
-} HcfX509CRLOpensslImpl;
-
 typedef enum {
     CRL_MAX,
     CRL_MIN,
