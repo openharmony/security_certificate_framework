@@ -19,6 +19,16 @@
 #include "ani_common.h"
 
 namespace ANI::CertFramework {
+
+class VerifyCertResultImpl {
+public:
+    VerifyCertResultImpl();
+    explicit VerifyCertResultImpl(HcfX509CertificateArray result);
+    ~VerifyCertResultImpl();
+    array<X509Cert> GetCertChain();
+private:
+    HcfX509CertificateArray result_;
+};
 class CertChainValidatorImpl {
 public:
     CertChainValidatorImpl();
@@ -26,6 +36,7 @@ public:
     ~CertChainValidatorImpl();
 
     void ValidateSync(CertChainData const& certChain);
+    VerifyCertResult ValidateCertSync(weak::X509Cert cert, X509CertValidatorParams const& params);
     string GetAlgorithm();
 
 private:

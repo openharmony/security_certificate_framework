@@ -134,7 +134,7 @@ HWTEST_F(CryptoX509CrlTestPart2, MatchX509CRLTest004, TestSize.Level0)
     ASSERT_NE(g_x509Crl, nullptr);
     HcfX509CrlMatchParams matchParams = { 0 };
     HcfX509Crl invalidCrl;
-    memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
+    (void)memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
     invalidCrl.base.base.getClass = GetInvalidCrlClass;
     bool bResult = true;
     CfResult ret = g_x509Crl->match(&invalidCrl, &matchParams, &bResult);
@@ -380,7 +380,7 @@ HWTEST_F(CryptoX509CrlTestPart2, CrlToStringTest001, TestSize.Level0)
     CfBlobDataFree(&blob);
 
     HcfX509Crl invalidCrl;
-    memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
+    (void)memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
     invalidCrl.base.base.getClass = GetInvalidCrlClass;
 
     ret = g_x509Crl->toString(&invalidCrl, &blob);
@@ -407,7 +407,7 @@ HWTEST_F(CryptoX509CrlTestPart2, CrlHashCodeTest001, TestSize.Level0)
     CfBlobDataFree(&blob);
 
     HcfX509Crl invalidCrl;
-    memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
+    (void)memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
     invalidCrl.base.base.getClass = GetInvalidCrlClass;
 
     ret = g_x509Crl->hashCode(&invalidCrl, &blob);
@@ -434,7 +434,7 @@ HWTEST_F(CryptoX509CrlTestPart2, CrlGetExtensionsObjectTest001, TestSize.Level0)
     CfBlobDataFree(&blob);
 
     HcfX509Crl invalidCrl;
-    memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
+    (void)memset_s(&invalidCrl, sizeof(HcfX509Crl), 0, sizeof(HcfX509Crl));
     invalidCrl.base.base.getClass = GetInvalidCrlClass;
 
     ret = g_x509Crl->getExtensionsObject(&invalidCrl, &blob);
