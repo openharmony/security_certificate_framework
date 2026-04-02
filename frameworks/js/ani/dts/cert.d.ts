@@ -175,9 +175,54 @@ declare namespace cert {
   function createX509CRL(inStream: EncodingBlob, callback: AsyncCallback<X509CRL>): void;
   function createX509CRL(inStream: EncodingBlob): Promise<X509CRL>;
 
+  enum CertRevocationFlag {
+    CERT_REVOCATION_PREFER_OCSP = 0,
+    CERT_REVOCATION_CRL_CHECK = 1,
+    CERT_REVOCATION_OCSP_CHECK = 2,
+    CERT_REVOCATION_CHECK_ALL_CERT = 3
+  }
+
+  enum OcspDigest {
+    SHA1 = 0,
+    SHA224 = 1,
+    SHA256 = 2,
+    SHA384 = 3,
+    SHA512 = 4
+  }
+
+  interface X509CertRevokedParams {
+    revocationFlags: Array<CertRevocationFlag>;
+    crls?: Array<X509CRL>;
+    allowDownloadCrl?: boolean;
+    ocspResponses?: Array<Uint8Array>;
+    allowOcspCheckOnline?: boolean;
+    ocspDigest?: OcspDigest;
+  }
+
+  interface X509CertValidatorParams {
+    untrustedCerts?: Array<X509Cert>;
+    trustedCerts?: Array<X509Cert>;
+    trustSystemCa?: boolean;
+    partialChain?: boolean;
+    allowDownloadIntermediateCa?: boolean;
+    date?: string;
+    validateDate?: boolean;
+    ignoreErrs?: Array<CertResult>;
+    hostnames?: Array<string>;
+    emailAddresses?: Array<string>;
+    keyUsage?: Array<KeyUsageType>;
+    userId?: Uint8Array;
+    revokedParams?: X509CertRevokedParams;
+  }
+
+  interface VerifyCertResult {
+    readonly certChain: Array<X509Cert>;
+  }
+
   interface CertChainValidator {
     validate(certChain: CertChainData, callback: AsyncCallback<void>): void;
     validate(certChain: CertChainData): Promise<void>;
+    validate(cert: X509Cert, params: X509CertValidatorParams): Promise<VerifyCertResult>;
     readonly algorithm: string;
   }
   function createCertChainValidator(algorithm: string): CertChainValidator;

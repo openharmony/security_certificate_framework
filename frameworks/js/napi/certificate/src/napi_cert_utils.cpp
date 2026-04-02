@@ -55,6 +55,22 @@ const struct CfResultCodeMap CODE_MAP[] = {
     { CF_ERR_NAPI, JS_ERR_CERT_RUNTIME_ERROR },
     { CF_ERR_INTERNAL, JS_ERR_CERT_RUNTIME_ERROR },
     { CF_ERR_PARAMETER_CHECK, JS_ERR_CERT_PARAMETER_CHECK },
+    { CF_ERR_CERT_UNTRUSTED, JS_ERR_CERT_UNTRUSTED },
+    { CF_ERR_CERT_REVOKED, JS_ERR_CERT_REVOKED },
+    { CF_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION, JS_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION },
+    { CF_ERR_CERT_HOST_NAME_MISMATCH, JS_ERR_CERT_HOST_NAME_MISMATCH },
+    { CF_ERR_CERT_EMAIL_MISMATCH, JS_ERR_CERT_EMAIL_MISMATCH },
+    { CF_ERR_CERT_KEY_USAGE_MISMATCH, JS_ERR_CERT_KEY_USAGE_MISMATCH },
+    { CF_ERR_CRL_NOT_FOUND, JS_ERR_CRL_NOT_FOUND },
+    { CF_ERR_CRL_NOT_YET_VALID, JS_ERR_CRL_NOT_YET_VALID },
+    { CF_ERR_CRL_HAS_EXPIRED, JS_ERR_CRL_HAS_EXPIRED },
+    { CF_ERR_CRL_SIGNATURE_FAILURE, JS_ERR_CRL_SIGNATURE_FAILURE },
+    { CF_ERR_UNABLE_TO_GET_CRL_ISSUER, JS_ERR_UNABLE_TO_GET_CRL_ISSUER },
+    { CF_ERR_OCSP_RESPONSE_NOT_FOUND, JS_ERR_OCSP_RESPONSE_NOT_FOUND },
+    { CF_ERR_OCSP_RESPONSE_INVALID, JS_ERR_OCSP_RESPONSE_INVALID },
+    { CF_ERR_OCSP_SIGNATURE_FAILURE, JS_ERR_OCSP_SIGNATURE_FAILURE },
+    { CF_ERR_OCSP_CERT_STATUS_UNKNOWN, JS_ERR_OCSP_CERT_STATUS_UNKNOWN },
+    { CF_ERR_NETWORK_TIMEOUT, JS_ERR_NETWORK_TIMEOUT },
 };
 
 napi_value CertNapiGetNull(napi_env env)
@@ -197,7 +213,7 @@ static char *CertGetStringFromValue(napi_env env, napi_value arg)
     if (napi_get_value_string_utf8(env, arg, value, length + 1, &length) != napi_ok) {
         LOGE("can not get value value");
         napi_throw(env, CertGenerateBusinessError(env, CF_INVALID_PARAMS, "get value failed"));
-        memset_s(value, length + 1, 0, length + 1);
+        (void)memset_s(value, length + 1, 0, length + 1);
         CfFree(value);
         value = nullptr;
         return nullptr;
@@ -367,7 +383,7 @@ void FreePrivateKeyInfo(PrivateKeyInfo *privateKey)
 {
     if (privateKey != nullptr) {
         if (privateKey->privateKey != nullptr) {
-            memset_s(privateKey->privateKey->data, privateKey->privateKey->len, 0, privateKey->privateKey->len);
+            (void)memset_s(privateKey->privateKey->data, privateKey->privateKey->len, 0, privateKey->privateKey->len);
             CF_FREE_PTR(privateKey->privateKey->data);
             CF_FREE_PTR(privateKey->privateKey);
         }
