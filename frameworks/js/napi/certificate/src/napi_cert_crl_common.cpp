@@ -87,47 +87,6 @@ napi_value ConvertCertToNapiValue(napi_env env, HcfX509Certificate *cert)
     return instance;
 }
 
-CfResult ConvertCertToNapiValueEx(napi_env env, HcfX509Certificate **certRef,
-    CfObject **certObjRef, napi_value *outValue)
-{
-    if (certRef == nullptr || *certRef == nullptr || certObjRef == nullptr ||
-        *certObjRef == nullptr || outValue == nullptr) {
-        LOGE("ConvertCertToNapiValueEx: invalid params.");
-        return CF_INVALID_PARAMS;
-    }
-
-    HcfX509Certificate *cert = *certRef;
-    CfObject *certObj = *certObjRef;
-
-    /* Create NapiX509Certificate with existing cert and certObj, ownership transferred */
-    NapiX509Certificate *x509Cert = new (std::nothrow) NapiX509Certificate(cert, certObj);
-    if (x509Cert == nullptr) {
-        LOGE("new x509Cert failed!");
-        return CF_ERR_MALLOC;
-    }
-
-    napi_value instance = NapiX509Certificate::CreateX509Cert(env);
-    napi_status status = napi_wrap(
-        env, instance, x509Cert,
-        [](napi_env env, void *data, void *hint) {
-            NapiX509Certificate *certClass = static_cast<NapiX509Certificate *>(data);
-            delete certClass;
-            return;
-        },
-        nullptr, nullptr);
-    if (status != napi_ok) {
-        LOGE("failed to wrap NapiX509Certificate obj!");
-        delete x509Cert;
-        return CF_ERR_NAPI;
-    }
-
-    /* Ownership transferred to NapiX509Certificate, clear original references */
-    *certRef = nullptr;
-    *certObjRef = nullptr;
-    *outValue = instance;
-    return CF_SUCCESS;
-}
-
 bool GetArrayCertFromNapiValue(napi_env env, napi_value object, HcfX509CertificateArray *certs, bool allowEmptyFlag)
 {
     bool flag = false;

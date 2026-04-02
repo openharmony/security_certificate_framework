@@ -90,21 +90,6 @@ typedef enum {
 } CfRevocationCheckOptionsType;
 
 typedef enum {
-    CF_REVOCATION_FLAG_PREFER_OCSP = 0,
-    CF_REVOCATION_FLAG_CRL_CHECK = 1,
-    CF_REVOCATION_FLAG_OCSP_CHECK = 2,
-    CF_REVOCATION_FLAG_CHECK_ALL_CERT = 3,
-} CfCertRevocationFlag;
-
-typedef enum {
-    CF_OCSP_DIGEST_SHA1 = 0,
-    CF_OCSP_DIGEST_SHA224 = 1,
-    CF_OCSP_DIGEST_SHA256 = 2,
-    CF_OCSP_DIGEST_SHA384 = 3,
-    CF_OCSP_DIGEST_SHA512 = 4,
-} CfOcspDigestType;
-
-typedef enum {
     CF_VALIDATION_POLICY_TYPE_X509,
     CF_VALIDATION_POLICY_TYPE_SSL,
 } CfValidationPolicyType;
@@ -253,7 +238,6 @@ typedef enum {
 #define MAX_COUNT_OID          100
 #define MAX_LEN_OID            128
 #define MAX_COUNT_NID          1195
-#define MAX_REVOCATION_FLAGS_COUNT 4
 
 #define MAX_LEN_CERTIFICATE    65536
 #define MAX_LEN_EXTENSIONS     65536

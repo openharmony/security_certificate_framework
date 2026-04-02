@@ -19,18 +19,12 @@
 #include "cf_blob.h"
 #include "cf_object_base.h"
 #include "cf_result.h"
-#include "x509_certificate.h"
-#include "x509_cert_chain_validate_params.h"
-#include "x509_cert_chain_validate_result.h"
-#include "cert_chain_validator.h"
 
 typedef struct HcfCertChainValidatorSpi HcfCertChainValidatorSpi;
 
 struct HcfCertChainValidatorSpi {
     CfObjectBase base;
     CfResult (*engineValidate)(HcfCertChainValidatorSpi *self, const CfArray *certsList);
-    CfResult (*engineValidateX509Cert)(HcfCertChainValidatorSpi *self, HcfX509Certificate *cert,
-        const HcfX509CertValidatorParams *params, HcfVerifyCertResult *result);
 };
 
 #endif // CF_CERT_CHAIN_VALIDATOR_SPI_H

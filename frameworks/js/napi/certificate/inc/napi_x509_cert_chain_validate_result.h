@@ -17,22 +17,16 @@
 #define NAPI_X509_CERT_CHAIN_VALIDATE_RESULT_H
 
 #include "cf_blob.h"
-#include "cf_api.h"
 #include "napi/native_api.h"
 #include "napi/native_common.h"
 #include "napi_cert_defines.h"
 #include "x509_cert_chain_validate_result.h"
-#include "cert_chain_validator.h"
 
 namespace OHOS {
 namespace CertFramework {
 
 napi_value BuildX509CertChainValidateResultJS(napi_env env, const HcfX509CertChainValidateResult *param);
 void FreeX509CertChainValidateResult(HcfX509CertChainValidateResult &param, bool freeCertFlag = false);
-
-CfResult BuildVerifyCertResultJS(napi_env env, HcfVerifyCertResult *result,
-    CfObject **certObj, uint32_t certObjCount, napi_value *outValue);
-void FreeVerifyCertResult(HcfVerifyCertResult &param, CfObject **certObj, uint32_t certObjCount);
 
 } // namespace CertFramework
 } // namespace OHOS

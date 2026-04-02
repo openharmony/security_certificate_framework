@@ -17,8 +17,8 @@
 #define X509_CRL_OEPNSSL_H
 
 #include "cf_blob.h"
+#include "crl.h"
 #include "cf_result.h"
-#include "x509_crl.h"
 #include "x509_crl_spi.h"
 
 #ifdef __cplusplus
