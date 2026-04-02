@@ -225,7 +225,7 @@ napi_value NapiX509DistinguishedName::GetNameUtf8(napi_env env, napi_callback_in
         napi_throw(env, CertGenerateBusinessError(env, CF_ERR_NAPI, "Get cb info failed!"));
         return nullptr;
     }
-    HcfX509DistinguishedName *x509Name = GetX509DistinguishedName();
+    HcfX509DistinguishedName *x509Name = GetX509DistinguishedNameUtf8();
     CfBlob *inPara = CertGetBlobFromStringJSParams(env, argv[PARAM0]);
     if (inPara != nullptr) {
         CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
@@ -399,6 +399,9 @@ napi_value ConstructX509DistinguishedName(HcfX509DistinguishedName *x509Name,
     NapiX509DistinguishedName *x509NameClass = new (std::nothrow) NapiX509DistinguishedName(x509Name);
     if (x509NameClass == nullptr) {
         LOGE("Failed to create a NapiX509DistinguishedName class");
+        if (x509Name == x509NameUtf8) {
+            x509NameUtf8 = nullptr;
+        }
         CfObjDestroy(x509Name);
         CfObjDestroy(x509NameUtf8);
         napi_throw(env, CertGenerateBusinessError(env, CF_ERR_MALLOC, "NapiX509DistinguishedName new failed"));

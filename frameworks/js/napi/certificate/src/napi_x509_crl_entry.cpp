@@ -463,36 +463,33 @@ napi_value NapiX509CrlEntry::GetCertIssuerX500DistinguishedName(napi_env env, na
 {
     HcfX509CrlEntry *x509CrlEntry = GetX509CrlEntry();
     CfBlob blob = { 0, nullptr };
-    CfResult result = x509CrlEntry->getCertIssuer(x509CrlEntry, &blob);
+    CfResult result = x509CrlEntry->getCertIssuerDer(x509CrlEntry, &blob);
     if (result != CF_SUCCESS) {
-        LOGE("getIssuerDN failed!");
-        napi_throw(env, CertGenerateBusinessError(env, result, "get issuer name failed"));
+        LOGE("getCertIssuerDer failed!");
+        napi_throw(env, CertGenerateBusinessError(env, result, "getCertIssuerDer failed"));
         return nullptr;
     }
-    HcfX509DistinguishedName *x509Name = nullptr;
-    CfResult ret = HcfX509DistinguishedNameCreate(&blob, true, &x509Name);
+    HcfX509DistinguishedName *x509NameUtf8 = nullptr;
+    CfResult ret = HcfX509DistinguishedNameCreate(&blob, false, &x509NameUtf8);
     CfBlobDataFree(&blob);
-    if (ret != CF_SUCCESS) {
+    if (ret != CF_SUCCESS || x509NameUtf8 == nullptr) {
         LOGE("HcfX509DistinguishedNameCreate failed");
         napi_throw(env, CertGenerateBusinessError(env, ret, "HcfX509DistinguishedNameCreate failed"));
         return nullptr;
     }
 
-    result = x509CrlEntry->getCertIssuerDer(x509CrlEntry, &blob);
+    result = x509CrlEntry->getCertIssuer(x509CrlEntry, &blob);
     if (result != CF_SUCCESS) {
-        LOGE("getCertIssuerDer failed!");
-        CfObjDestroy(x509Name);
-        napi_throw(env, CertGenerateBusinessError(env, result, "getCertIssuerDer failed"));
+        LOGE("getIssuerDN failed!");
+        CfObjDestroy(x509NameUtf8);
+        napi_throw(env, CertGenerateBusinessError(env, result, "get issuer name failed"));
         return nullptr;
     }
-    HcfX509DistinguishedName *x509NameUtf8 = nullptr;
-    ret = HcfX509DistinguishedNameCreate(&blob, false, &x509NameUtf8);
+    HcfX509DistinguishedName *x509Name = nullptr;
+    ret = HcfX509DistinguishedNameCreate(&blob, true, &x509Name);
     CfBlobDataFree(&blob);
-    if (ret != CF_SUCCESS) {
-        LOGE("HcfX509DistinguishedNameCreate failed");
-        CfObjDestroy(x509Name);
-        napi_throw(env, CertGenerateBusinessError(env, ret, "HcfX509DistinguishedNameCreate failed"));
-        return nullptr;
+    if (ret != CF_SUCCESS || x509Name == nullptr) {
+        x509Name = x509NameUtf8;
     }
 
     napi_value instance = ConstructX509DistinguishedName(x509Name, x509NameUtf8, env);
