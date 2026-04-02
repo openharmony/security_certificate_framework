@@ -107,7 +107,7 @@ array<string> X500DistinguishedNameImpl::GetNameByStr(string_view type)
 
 array<string> X500DistinguishedNameImpl::GetNameByStrUtf8(string_view type, EncodingType encodingType)
 {
-    if (this->x509Name_ == nullptr) {
+    if (this->x509NameUtf8_ == nullptr) {
         ANI_LOGE_THROW(CF_ERR_ANI, "x500 distinguished name obj is nullptr!");
         return {};
     }
@@ -115,7 +115,7 @@ array<string> X500DistinguishedNameImpl::GetNameByStrUtf8(string_view type, Enco
     StringToDataBlob(type, inType);
     CfEncodinigType encodeType = static_cast<CfEncodinigType>(encodingType.get_value());
     CfArray outArr = { nullptr, CF_FORMAT_DER, 0 };
-    CfResult res = this->x509Name_->getNameUtf8(this->x509Name_, &inType, encodeType, &outArr);
+    CfResult res = this->x509NameUtf8_->getNameUtf8(this->x509NameUtf8_, &inType, encodeType, &outArr);
     if (res != CF_SUCCESS) {
         ANI_LOGE_THROW(res, "get name utf8 failed.");
         return {};
