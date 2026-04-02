@@ -29,8 +29,6 @@ namespace CertFramework {
 
 napi_value ConvertCertArrToNapiValue(napi_env env, HcfX509CertificateArray *certs);
 napi_value ConvertCertToNapiValue(napi_env env, HcfX509Certificate *certs);
-CfResult ConvertCertToNapiValueEx(napi_env env, HcfX509Certificate **certRef,
-    CfObject **certObjRef, napi_value *outValue);
 bool GetArrayCertFromNapiValue(
     napi_env env, napi_value object, HcfX509CertificateArray *certs, bool allowEmptyFlag = true);
 bool GetArrayCRLFromNapiValue(napi_env env, napi_value object, HcfX509CrlArray *crls, bool allowEmptyFlag = true);

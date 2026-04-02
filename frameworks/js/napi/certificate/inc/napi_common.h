@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2023 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,10 +16,7 @@
 #ifndef NAPI_COMMON_H
 #define NAPI_COMMON_H
 
-#include "cf_blob.h"
-#include "cf_result.h"
 #include "cf_type.h"
-#include "cert_chain_validator.h"
 #include "napi_cert_defines.h"
 #include "napi/native_api.h"
 #include "napi/native_common.h"
@@ -46,35 +43,6 @@ napi_value GetResourceName(napi_env env, const char *name);
 napi_value ConvertBlobArrayToNapiValue(napi_env env,  const CfParamSet *paramSet);
 int32_t GetBlobArrayFromParamSet(const CfParamSet *paramSet, CfArray *outArray);
 void FreeAsyncContext(napi_env env, AsyncCtx &ctx);
-
-typedef struct NapiParamInfo {
-    const char *name;
-    bool mustExist;
-    int minLen;
-    int maxLen;
-    struct NapiParamInfo *innerParams;
-} NapiParamInfo;
-
-CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, bool mustExist, napi_value &value);
-CfResult NapiGetBoolValueEx(napi_env env, napi_value arg, const char *name, bool &value, char **errMsg);
-CfResult NapiGetStringValueEx(napi_env env, napi_value arg, const NapiParamInfo *info, char *&value, char **errMsg);
-
-typedef struct {
-    napi_value obj;
-    uint32_t length;
-} NapiArrayBaseInfo;
-
-CfResult NapiGetArrayBaseInfoEx(napi_env env, napi_value arg, const NapiParamInfo *info, NapiArrayBaseInfo *out,
-    char **errMsg);
-CfResult NapiGetStringArrayEx(napi_env env, napi_value arg, const NapiParamInfo *info, HcfStringArray &value,
-    char **errMsg);
-CfResult NapiGetBlobArrayNoCopy(napi_env env, napi_value arg, const NapiParamInfo *info, CfBlobArray &value,
-    char **errMsg);
-CfResult NapiGetInt32ArrayEx(napi_env env, napi_value arg, const NapiParamInfo *info, HcfInt32Array &value,
-    char **errMsg);
-CfResult NapiGetInt32Ex(napi_env env, napi_value arg, const char *name, int32_t &value, char **errMsg);
-void NapiFreeStringArray(HcfStringArray &array);
-void SetBuildParamError(char **errMsg, const char *format, ...);
 
 inline napi_value NapiGetNull(napi_env env)
 {
