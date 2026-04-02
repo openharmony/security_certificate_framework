@@ -31,7 +31,6 @@ public:
     static napi_value CreateCertChainValidator(napi_env env, napi_callback_info info);
 
     napi_value Validate(napi_env env, napi_callback_info info);
-    napi_value ValidateX509Cert(napi_env env, napi_callback_info info);
 
     HcfCertChainValidator *GetCertChainValidator()
     {

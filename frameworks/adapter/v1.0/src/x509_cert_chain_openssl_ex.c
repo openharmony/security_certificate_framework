@@ -1679,17 +1679,3 @@ void FreeTrustAnchorData(HcfX509TrustAnchor *trustAnchor)
     trustAnchor->CACert = NULL;
 }
 
-X509_CRL *GetX509CrlFromHcfX509Crl(const HcfX509Crl *crl)
-{
-    if (!CfIsClassMatch((CfObjectBase *)crl, HCF_X509_CRL_CLASS)) {
-        LOGE("Input wrong class type!");
-        return NULL;
-    }
-    HcfX509CrlImpl *impl = (HcfX509CrlImpl *)crl;
-    if (!CfIsClassMatch((CfObjectBase *)(impl->spiObj), X509_CRL_OPENSSL_CLASS)) {
-        LOGE("Input wrong openssl class type!");
-        return NULL;
-    }
-    HcfX509CRLOpensslImpl *realCrl = (HcfX509CRLOpensslImpl *)(impl->spiObj);
-    return realCrl->crl;
-}

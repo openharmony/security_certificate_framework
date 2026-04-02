@@ -22,7 +22,6 @@
 #include "x509_crl_entry.h"
 #include "x509_crl.h"
 #include "x509_crl_spi.h"
-#include "fwk_class.h"
 
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -62,15 +61,13 @@ typedef struct {
     X509_CRL *crl;
 } HcfX509CRLEntryOpensslImpl;
 
-typedef struct {
-    HcfX509CrlSpi base;
-    X509_CRL *crl;
-    CfBlob *certIssuer;
-    CfBlob *certIssuerUtf8;
-} HcfX509CRLOpensslImpl;
-
 #define X509_CRL_ENTRY_OPENSSL_CLASS "X509CrlEntryOpensslClass"
 
+typedef struct {
+    HcfX509Crl base;
+    HcfX509CrlSpi *spiObj;
+    const char *certType;
+} HcfX509CrlImpl;
 #define X509_CRL_OPENSSL_CLASS "X509CrlOpensslClass"
 
 #endif
