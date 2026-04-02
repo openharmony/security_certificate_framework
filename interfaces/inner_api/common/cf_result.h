@@ -68,38 +68,5 @@ typedef enum CfResult {
     CF_ERR_SHOULD_NOT_CALL = -30012,
 
     CF_ERR_CONNECT_TIMEOUT = -30013,
-
-    /* Indicates that cert is untrusted. */
-    CF_ERR_CERT_UNTRUSTED = -30014,
-    /* Indicates that cert has been revoked. */
-    CF_ERR_CERT_REVOKED = -30015,
-    /* Indicates that cert contains an unknown critical extension. */
-    CF_ERR_CERT_UNKNOWN_CRITICAL_EXTENSION = -30016,
-    /* Indicates that cert host name does not match. */
-    CF_ERR_CERT_HOST_NAME_MISMATCH = -30017,
-    /* Indicates that cert email address does not match. */
-    CF_ERR_CERT_EMAIL_MISMATCH = -30018,
-    /* Indicates that cert key usage does not match. */
-    CF_ERR_CERT_KEY_USAGE_MISMATCH = -30019,
-    /* Indicates that CRL is not found. */
-    CF_ERR_CRL_NOT_FOUND = -30020,
-    /* Indicates that CRL is not yet valid. */
-    CF_ERR_CRL_NOT_YET_VALID = -30021,
-    /* Indicates that CRL has expired. */
-    CF_ERR_CRL_HAS_EXPIRED = -30022,
-    /* Indicates that CRL signature verification failed. */
-    CF_ERR_CRL_SIGNATURE_FAILURE = -30023,
-    /* Indicates that issuer of CRL is not found. */
-    CF_ERR_UNABLE_TO_GET_CRL_ISSUER = -30024,
-    /* Indicates that OCSP response is not found. */
-    CF_ERR_OCSP_RESPONSE_NOT_FOUND = -30025,
-    /* Indicates that OCSP response is invalid. */
-    CF_ERR_OCSP_RESPONSE_INVALID = -30026,
-    /* Indicates that OCSP signature verification failed. */
-    CF_ERR_OCSP_SIGNATURE_FAILURE = -30027,
-    /* Indicates that OCSP certificate status is unknown. */
-    CF_ERR_OCSP_CERT_STATUS_UNKNOWN = -30029,
-    /* Indicates that network timeout. */
-    CF_ERR_NETWORK_TIMEOUT = -30030,
 } CfResult;
 #endif

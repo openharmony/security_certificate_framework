@@ -54,11 +54,6 @@ typedef struct {
     int64_t *data;
 } CfInt64Array;
 
-typedef struct {
-    char **data;
-    uint32_t count;
-} HcfStringArray;
-
 #ifdef __cplusplus
 extern "C" {
 #endif

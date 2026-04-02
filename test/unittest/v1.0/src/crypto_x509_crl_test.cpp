@@ -1834,7 +1834,7 @@ HWTEST_F(CryptoX509CrlTest, GetX509FromCertificateBranchTest, TestSize.Level0)
     EXPECT_EQ(flag, false);
 
     HcfX509CertificateImpl x509CertSpi;
-    (void)memset_s(&x509CertSpi, sizeof(HcfX509CertificateImpl), 0, sizeof(HcfX509CertificateImpl));
+    memset_s(&x509CertSpi, sizeof(HcfX509CertificateImpl), 0, sizeof(HcfX509CertificateImpl));
     HcfX509Certificate *x509Cert = (HcfX509Certificate *)&x509CertSpi;
     x509Cert->base.base.getClass = GetInvalidCertClass;
     ret = spiObj->engineGetRevokedCertWithCert(&invalidSpi, x509Cert, &entry);
@@ -1843,7 +1843,7 @@ HWTEST_F(CryptoX509CrlTest, GetX509FromCertificateBranchTest, TestSize.Level0)
     x509Cert->base.base.getClass = GetValidX509CertificateClass;
     HcfX509CertificateImpl *impl = (HcfX509CertificateImpl *)(x509Cert);
     HcfX509CertificateSpi spi;
-    (void)memset_s(&spi, sizeof(HcfX509CertificateSpi), 0, sizeof(HcfX509CertificateSpi));
+    memset_s(&spi, sizeof(HcfX509CertificateSpi), 0, sizeof(HcfX509CertificateSpi));
     impl->spiObj = &spi;
     ((CfObjectBase *)(impl->spiObj))->getClass = GetInvalidCertClass;
     ret = spiObj->engineGetRevokedCertWithCert(&invalidSpi, x509Cert, &entry);

@@ -73,7 +73,6 @@ CfResult ValidateTrustCert(X509 *caCert, STACK_OF(X509) *x509CertChain,
     const HcfX509CertChainValidateParams *params, HcfX509TrustAnchor *trustAnchorResult);
 void ResetCertChainOut(STACK_OF(X509) *out);
 void FreeTrustAnchorData(HcfX509TrustAnchor *trustAnchor);
-X509_CRL *GetX509CrlFromHcfX509Crl(const HcfX509Crl *crl);
 #ifdef __cplusplus
 }
 #endif
