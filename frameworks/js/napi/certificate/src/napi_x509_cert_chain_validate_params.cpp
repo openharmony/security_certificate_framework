@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2023-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -38,6 +38,8 @@
 
 namespace OHOS {
 namespace CertFramework {
+
+static void FreeX509CertRevokedParams(HcfX509CertRevokedParams *&param);
 
 static bool GetValidDate(napi_env env, napi_value arg, CfBlob *&out)
 {
@@ -672,10 +674,14 @@ static CfResult GetCrlArrayFromNapiValueEx(napi_env env, napi_value arg, const c
 static CfResult GetRevokedParamsFieldsEx(napi_env env, napi_value obj, HcfX509CertRevokedParams *param, char **errMsg)
 {
     NapiParamInfo revocationFlagsInfo = {
-        CERT_REVOKED_TAG_REVOCATION_FLAGS.c_str(), false, 1, MAX_REVOCATION_FLAG_COUNT, NULL
+        CERT_REVOKED_TAG_REVOCATION_FLAGS.c_str(), true, 1, MAX_REVOCATION_FLAG_COUNT, NULL
     };
     CfResult ret = NapiGetInt32ArrayEx(env, obj, &revocationFlagsInfo, param->revocationFlags, errMsg);
-    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+    if (ret == CF_NOT_EXIST) {
+        SetBuildParamError(errMsg, "If revocation checking is enabled, the revocationFlags parameter must exist");
+        return CF_INVALID_PARAMS;
+    }
+    if (ret != CF_SUCCESS) {
         return ret;
     }
 
@@ -684,14 +690,13 @@ static CfResult GetRevokedParamsFieldsEx(napi_env env, napi_value obj, HcfX509Ce
         return ret;
     }
 
-    ret = NapiGetBoolValueEx(env, obj, CERT_REVOKED_TAG_ALLOW_DOWNLOAD_CRL.c_str(),
-        param->allowDownloadCrl, errMsg);
+    ret = NapiGetBoolValueEx(env, obj, CERT_REVOKED_TAG_ALLOW_DOWNLOAD_CRL.c_str(), param->allowDownloadCrl, errMsg);
     if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
         return ret;
     }
 
-    ret = NapiGetBoolValueEx(env, obj, CERT_REVOKED_TAG_ALLOW_OCSP_CHECK_ONLINE.c_str(),
-        param->allowOcspCheckOnline, errMsg);
+    ret = NapiGetBoolValueEx(env, obj, CERT_REVOKED_TAG_ALLOW_OCSP_CHECK_ONLINE.c_str(), param->allowOcspCheckOnline,
+        errMsg);
     if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
         return ret;
     }
@@ -715,8 +720,12 @@ static CfResult BuildX509CertRevokedParamsEx(napi_env env, napi_value arg, HcfX5
     char **errMsg)
 {
     napi_value revokedParamsObj = nullptr;
-    CfResult ret = NapiGetProperty(env, arg, CERT_VALIDATOR_TAG_REVOKED_PARAMS.c_str(), false, revokedParamsObj);
-    if (ret != CF_SUCCESS || revokedParamsObj == nullptr) {
+    const char *name = CERT_VALIDATOR_TAG_REVOKED_PARAMS.c_str();
+    CfResult ret = NapiGetProperty(env, arg, name, revokedParamsObj, errMsg);
+    if (ret == CF_NOT_EXIST) {
+        return CF_SUCCESS;
+    }
+    if (ret != CF_SUCCESS) {
         return ret;
     }
 
@@ -727,8 +736,8 @@ static CfResult BuildX509CertRevokedParamsEx(napi_env env, napi_value arg, HcfX5
     }
 
     ret = GetRevokedParamsFieldsEx(env, revokedParamsObj, param, errMsg);
-    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
-        CfFree(param);
+    if (ret != CF_SUCCESS) {
+        FreeX509CertRevokedParams(param);
         param = nullptr;
         return ret;
     }
@@ -803,11 +812,17 @@ static CfResult GetArrayParamsEx(napi_env env, napi_value arg, HcfX509CertValida
     if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
         return ret;
     }
+
+    NapiParamInfo userIdInfo = { CERT_VALIDATOR_TAG_USER_ID.c_str(), false, 1, MAX_USER_ID_LEN, NULL };
+    ret = NapiGetBlobValueEx(env, arg, &userIdInfo, param.userId, errMsg);
+    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+        return ret;
+    }
     return CF_SUCCESS;
 }
 
-static CfResult BuildX509BaseVerifyParamsEx(napi_env env, napi_value arg,
-    HcfX509CertValidatorParams &param, char **errMsg)
+static CfResult BuildX509BaseVerifyParamsEx(napi_env env, napi_value arg, HcfX509CertValidatorParams &param,
+    char **errMsg)
 {
     CfResult ret = GetBoolParamsEx(env, arg, param, errMsg);
     if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
@@ -845,7 +860,7 @@ CfResult BuildX509CertValidatorParams(napi_env env, napi_value arg, HcfX509CertV
     param.validateDate = true;
 
     ret = BuildX509BaseVerifyParamsEx(env, arg, param, errMsg);
-    if (ret != CF_SUCCESS && ret != CF_NOT_EXIST) {
+    if (ret != CF_SUCCESS) {
         FreeX509CertValidatorParams(param);
         return ret;
     }
@@ -883,6 +898,7 @@ void FreeX509CertValidatorParams(HcfX509CertValidatorParams &param)
     NapiFreeStringArray(param.hostnames);
     NapiFreeStringArray(param.emailAddresses);
     CfFree(param.keyUsage.data);
+    CfBlobDataFree(&param.userId);
     FreeX509CertRevokedParams(param.revokedParams);
 
     (void)memset_s(&param, sizeof(HcfX509CertValidatorParams), 0, sizeof(HcfX509CertValidatorParams));

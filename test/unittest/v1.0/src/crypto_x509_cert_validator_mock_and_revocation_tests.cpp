@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -64,8 +64,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509CertMockTest016, TestSize.Leve
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
 
     CfObjDestroy(endEntityCert);
@@ -107,8 +105,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_048, TestSize.Level0)
     HcfVerifyCertResult result = {};
 
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_KEYUSAGE_NO_CERTSIGN);
 
     CfObjDestroy(endEntityCert);
@@ -150,8 +146,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_049, TestSize.Level0)
     HcfVerifyCertResult result = {};
 
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CERT_SIGNATURE_FAILURE);
 
     CfObjDestroy(endEntityCert);
@@ -245,8 +239,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509CertMockTest017, TestSize.Leve
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY);
 
     CfObjDestroy(endEntityCert);
@@ -294,8 +286,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509CertMockTest018, TestSize.Leve
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
     X509OpensslMock::SetMockFlag(false);
     Mock::VerifyAndClearExpectations(&X509OpensslMock::GetInstance());
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
 
     CfObjDestroy(endEntityCert);
@@ -391,14 +381,12 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509CertMockTest020, TestSize.Leve
     SetMockMallocIndex(0);
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
     EndRecordMallocNum();
-    (void)res;
     EXPECT_EQ(res, CF_ERR_MALLOC);
 
     StartRecordMallocNum();
     SetMockMallocIndex(1);
     res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
     EndRecordMallocNum();
-    (void)res;
     EXPECT_EQ(res, CF_ERR_CRYPTO_OPERATION);
 
     CfObjDestroy(endEntityCert);
@@ -435,8 +423,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509CertMockTest021, TestSize.Leve
     SetMockFlag(true);
     CfResult res = g_validator->validateX509Cert(g_validator, endEntityCert, &params, &result);
     SetMockFlag(false);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_MALLOC);
 
     CfObjDestroy(endEntityCert);
@@ -485,8 +471,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_001, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -536,8 +520,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_002, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -589,8 +571,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_003, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -643,8 +623,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_004, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -750,8 +728,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_006, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     /* validateDate=false skips CRL expiration, but cert IS in CRL, should be revoked */
     EXPECT_EQ(res, CF_ERR_CERT_REVOKED);
 
@@ -814,8 +790,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_007, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -865,8 +839,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_008, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -923,8 +895,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_009, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -976,8 +946,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_010, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
 
     CfObjDestroy(cert);
@@ -1027,8 +995,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_011, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
     EXPECT_NE(result.errorMsg, nullptr);
 
@@ -1075,8 +1041,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_012, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_PARAMETER_CHECK);
     EXPECT_NE(result.errorMsg, nullptr);
 
@@ -1129,8 +1093,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_013, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_CRL_NOT_FOUND);
     EXPECT_NE(result.errorMsg, nullptr);
 
@@ -1183,8 +1145,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_014, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     /* CRL download should fail with network timeout since URL is unreachable */
     EXPECT_EQ(res, CF_ERR_NETWORK_TIMEOUT);
     EXPECT_NE(result.errorMsg, nullptr);
@@ -1231,8 +1191,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_015, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     EXPECT_EQ(res, CF_ERR_OCSP_RESPONSE_NOT_FOUND);
     EXPECT_NE(result.errorMsg, nullptr);
 
@@ -1285,8 +1243,6 @@ HWTEST_F(CryptoX509CertValidatorTest, ValidateX509Cert_Revocation_016, TestSize.
 
     HcfVerifyCertResult result = {};
     CfResult res = g_validator->validateX509Cert(g_validator, cert, &params, &result);
-    (void)res;
-
     /* OCSP online check timeout due to unreachable server */
     EXPECT_EQ(res, CF_ERR_NETWORK_TIMEOUT);
     EXPECT_NE(result.errorMsg, nullptr);

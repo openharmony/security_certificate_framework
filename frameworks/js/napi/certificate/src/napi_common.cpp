@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Huawei Device Co., Ltd.
+ * Copyright (c) 2023-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -206,29 +206,25 @@ void FreeAsyncContext(napi_env env, AsyncCtx &async)
     async = nullptr;
 }
 
-CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, bool mustExist, napi_value &value)
+CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, napi_value &value, char **errMsg)
 {
     bool hasValue = false;
     if (napi_has_named_property(env, arg, name, &hasValue) != napi_ok) {
-        CF_LOG_E("check property %{public}s failed!", name);
+        SetBuildParamError(errMsg, "check property '%s' failed", name);
         return CF_ERR_NAPI;
     }
     if (!hasValue) {
-        if (mustExist) {
-            CF_LOG_I("%{public}s do not exist!", name);
-            return CF_INVALID_PARAMS;
-        }
         return CF_NOT_EXIST;
     }
 
     napi_value obj = nullptr;
     napi_status status = napi_get_named_property(env, arg, name, &obj);
     if (status != napi_ok) {
-        CF_LOG_E("get property %{public}s failed!", name);
+        SetBuildParamError(errMsg, "get property '%s' failed!", name);
         return CF_ERR_NAPI;
     }
     if (obj == nullptr) {
-        CF_LOG_E("get property %{public}s value failed!", name);
+        SetBuildParamError(errMsg, "'%s' is null!", name);
         return CF_INVALID_PARAMS;
     }
     value = obj;
@@ -251,12 +247,8 @@ void NapiFreeStringArray(HcfStringArray &array)
 CfResult NapiGetBoolValueEx(napi_env env, napi_value arg, const char *name, bool &value, char **errMsg)
 {
     napi_value obj = nullptr;
-    CfResult ret = NapiGetProperty(env, arg, name, false, obj);
-    if (ret == CF_NOT_EXIST) {
-        return ret;
-    }
+    CfResult ret = NapiGetProperty(env, arg, name, obj, errMsg);
     if (ret != CF_SUCCESS) {
-        SetBuildParamError(errMsg, "get property '%s' failed", name);
         return ret;
     }
 
@@ -319,15 +311,61 @@ static CfResult NapiGetStringFromElement(napi_env env, napi_value element, const
 CfResult NapiGetStringValueEx(napi_env env, napi_value arg, const NapiParamInfo *info, char *&value, char **errMsg)
 {
     napi_value obj = nullptr;
-    CfResult ret = NapiGetProperty(env, arg, info->name, info->mustExist, obj);
-    if (ret == CF_NOT_EXIST) {
-        return ret;
-    }
+    CfResult ret = NapiGetProperty(env, arg, info->name, obj, errMsg);
     if (ret != CF_SUCCESS) {
-        SetBuildParamError(errMsg, "get property '%s' failed", info->name);
         return ret;
     }
+
     return NapiGetStringFromElement(env, obj, info, value, errMsg);
+}
+
+CfResult NapiGetBlobValueEx(napi_env env, napi_value arg, const NapiParamInfo *info, CfBlob &value, char **errMsg)
+{
+    napi_value obj = nullptr;
+    CfResult ret = NapiGetProperty(env, arg, info->name, obj, errMsg);
+    if (ret == CF_NOT_EXIST || ret != CF_SUCCESS) {
+        return ret;
+    }
+
+    bool isTypedArray = false;
+    if (napi_is_typedarray(env, obj, &isTypedArray) != napi_ok) {
+        SetBuildParamError(errMsg, "'%s': check type failed", info->name);
+        return CF_ERR_NAPI;
+    }
+    if (!isTypedArray) {
+        SetBuildParamError(errMsg, "'%s': valueType is not typedarray", info->name);
+        return CF_INVALID_PARAMS;
+    }
+
+    napi_typedarray_type arrayType;
+    size_t length = 0;
+    void *rawData = nullptr;
+    napi_value arrayBuffer = nullptr;
+    size_t offset = 0;
+
+    napi_status status = napi_get_typedarray_info(env, obj, &arrayType, &length, &rawData, &arrayBuffer, &offset);
+    if (status != napi_ok) {
+        SetBuildParamError(errMsg, "'%s': get typedarray info failed", info->name);
+        return CF_ERR_NAPI;
+    }
+    if (arrayType != napi_uint8_array || rawData == nullptr) {
+        SetBuildParamError(errMsg, "'%s': is not uint8 array", info->name);
+        return CF_INVALID_PARAMS;
+    }
+    if (length < static_cast<size_t>(info->minLen) || length > static_cast<size_t>(info->maxLen)) {
+        SetBuildParamError(errMsg, "'%s': length is invalid, should be in [%d, %d]",
+            info->name, info->minLen, info->maxLen);
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    value.data = static_cast<uint8_t *>(CfMallocEx(length));
+    if (value.data == nullptr) {
+        SetBuildParamError(errMsg, "'%s': allocate memory failed", info->name);
+        return CF_ERR_MALLOC;
+    }
+    (void)memcpy_s(value.data, length, rawData, length);
+    value.size = length;
+    return CF_SUCCESS;
 }
 
 CfResult NapiGetArrayBaseInfoEx(napi_env env, napi_value arg, const NapiParamInfo *info, NapiArrayBaseInfo *out,
@@ -335,12 +373,8 @@ CfResult NapiGetArrayBaseInfoEx(napi_env env, napi_value arg, const NapiParamInf
 {
     napi_value arrayObj = nullptr;
     uint32_t length = 0;
-    CfResult ret = NapiGetProperty(env, arg, info->name, info->mustExist, arrayObj);
-    if (ret == CF_NOT_EXIST) {
-        return ret;
-    }
+    CfResult ret = NapiGetProperty(env, arg, info->name, arrayObj, errMsg);
     if (ret != CF_SUCCESS) {
-        SetBuildParamError(errMsg, "get property '%s' failed", info->name);
         return ret;
     }
 
@@ -537,12 +571,8 @@ CfResult NapiGetInt32ArrayEx(napi_env env, napi_value arg, const NapiParamInfo *
 CfResult NapiGetInt32Ex(napi_env env, napi_value arg, const char *name, int32_t &value, char **errMsg)
 {
     napi_value element = nullptr;
-    CfResult ret = NapiGetProperty(env, arg, name, false, element);
-    if (ret == CF_NOT_EXIST) {
-        return ret;
-    }
+    CfResult ret = NapiGetProperty(env, arg, name, element, errMsg);
     if (ret != CF_SUCCESS) {
-        SetBuildParamError(errMsg, "get property '%s' failed", name);
         return ret;
     }
 

@@ -36,6 +36,7 @@ extern "C" {
 #define HTTP_PORT "80"
 #define HTTPS_PORT "443"
 #define CERT_VERIFY_DIR "/etc/security/certificates"
+#define SYSTEM_GM_CERT_DIR "/etc/security/certificates_gm"
 
 // helper functions
 typedef struct {

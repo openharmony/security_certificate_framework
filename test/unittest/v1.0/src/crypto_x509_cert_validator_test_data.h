@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -84,6 +84,11 @@ extern const size_t OCSP_TEST_RESP_UNKNOWN_SIZE;
 
 /* Real-world test certificate */
 extern const char *REAL_WORLD_CERT;
+
+/* SM2 test certificates */
+extern const char *SM2_SIGN_CERT;
+extern const char *SM2_INTER_CERT;
+extern const char *SM2_ROOT_CERT;
 
 HcfX509Certificate *CreateCertFromPem(const char *pemCert);
 void FreeVerifyCertResult(HcfVerifyCertResult &result);
