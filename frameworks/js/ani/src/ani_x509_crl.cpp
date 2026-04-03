@@ -390,33 +390,31 @@ X500DistinguishedName X509CRLImpl::GetIssuerX500DistinguishedName()
         return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>();
     }
     CfBlob blob = {};
-    // x509Name
-    CfResult res = this->x509Crl_->getIssuerName(this->x509Crl_, &blob);
-    if (res != CF_SUCCESS) {
-        ANI_LOGE_THROW(res, "get issuer name failed!");
-        return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>();
-    }
-    HcfX509DistinguishedName *x509Name = nullptr;
-    res = HcfX509DistinguishedNameCreate(&blob, true, &x509Name);
-    CfBlobDataFree(&blob);
-    if (res != CF_SUCCESS) {
-        ANI_LOGE_THROW(res, "create x509 distinguished name failed!");
-        return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>();
-    }
     // x509NameUtf8
-    res = this->x509Crl_->getIssuerNameDer(this->x509Crl_, &blob);
+    CfResult res = this->x509Crl_->getIssuerNameDer(this->x509Crl_, &blob);
     if (res != CF_SUCCESS) {
         ANI_LOGE_THROW(res, "get issuer name der failed!");
-        CfObjDestroy(x509Name);
         return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>();
     }
     HcfX509DistinguishedName *x509NameUtf8 = nullptr;
     res = HcfX509DistinguishedNameCreate(&blob, false, &x509NameUtf8);
     CfBlobDataFree(&blob);
-    if (res != CF_SUCCESS) {
+    if (res != CF_SUCCESS || x509NameUtf8 == nullptr) {
         ANI_LOGE_THROW(res, "create x509 distinguished name failed!");
-        CfObjDestroy(x509Name);
         return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>();
+    }
+    // x509Name
+    res = this->x509Crl_->getIssuerName(this->x509Crl_, &blob);
+    if (res != CF_SUCCESS) {
+        ANI_LOGE_THROW(res, "get issuer name failed!");
+        CfObjDestroy(x509NameUtf8);
+        return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>();
+    }
+    HcfX509DistinguishedName *x509Name = nullptr;
+    res = HcfX509DistinguishedNameCreate(&blob, true, &x509Name);
+    CfBlobDataFree(&blob);
+    if (res != CF_SUCCESS || x509Name == nullptr) {
+        x509Name = x509NameUtf8;
     }
     return make_holder<X500DistinguishedNameImpl, X500DistinguishedName>(x509Name, x509NameUtf8);
 }

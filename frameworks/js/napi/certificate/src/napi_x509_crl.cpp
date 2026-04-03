@@ -879,36 +879,33 @@ napi_value NapiX509Crl::GetIssuerX500DistinguishedName(napi_env env, napi_callba
 {
     HcfX509Crl *x509Crl = GetX509Crl();
     CfBlob blob = { 0, nullptr };
-    CfResult ret = x509Crl->getIssuerName(x509Crl, &blob);
-    if (ret != CF_SUCCESS) {
-        LOGE("getIssuerName failed!");
-        napi_throw(env, CertGenerateBusinessError(env, ret, "get issuer name failed"));
-        return nullptr;
-    }
-    HcfX509DistinguishedName *x509Name = nullptr;
-    ret = HcfX509DistinguishedNameCreate(&blob, true, &x509Name);
-    CfBlobDataFree(&blob);
-    if (ret != CF_SUCCESS) {
-        LOGE("HcfX509DistinguishedNameCreate failed");
-        napi_throw(env, CertGenerateBusinessError(env, ret, "HcfX509DistinguishedNameCreate failed"));
-        return nullptr;
-    }
-
-    ret = x509Crl->getIssuerNameDer(x509Crl, &blob);
+    CfResult ret = x509Crl->getIssuerNameDer(x509Crl, &blob);
     if (ret != CF_SUCCESS) {
         LOGE("getIssuerNameDer failed!");
-        CfObjDestroy(x509Name);
         napi_throw(env, CertGenerateBusinessError(env, ret, "get issuer name der failed"));
         return nullptr;
     }
     HcfX509DistinguishedName *x509NameUtf8 = nullptr;
     ret = HcfX509DistinguishedNameCreate(&blob, false, &x509NameUtf8);
     CfBlobDataFree(&blob);
-    if (ret != CF_SUCCESS) {
+    if (ret != CF_SUCCESS || x509NameUtf8 == nullptr) {
         LOGE("HcfX509DistinguishedNameCreate failed");
-        CfObjDestroy(x509Name);
         napi_throw(env, CertGenerateBusinessError(env, ret, "HcfX509DistinguishedNameCreate failed"));
         return nullptr;
+    }
+
+    ret = x509Crl->getIssuerName(x509Crl, &blob);
+    if (ret != CF_SUCCESS) {
+        LOGE("getIssuerName failed!");
+        CfObjDestroy(x509NameUtf8);
+        napi_throw(env, CertGenerateBusinessError(env, ret, "get issuer name failed"));
+        return nullptr;
+    }
+    HcfX509DistinguishedName *x509Name = nullptr;
+    ret = HcfX509DistinguishedNameCreate(&blob, true, &x509Name);
+    CfBlobDataFree(&blob);
+    if (ret != CF_SUCCESS || x509Name == nullptr) {
+        x509Name = x509NameUtf8;
     }
 
     napi_value instance = ConstructX509DistinguishedName(x509Name, x509NameUtf8, env);
