@@ -73,6 +73,12 @@ cryptoFramework::DataBlob PubKeyImpl::GetEncoded()
     return { data };
 }
 
+array<uint8_t> PubKeyImpl::GetKeyDataSync(cryptoFramework::AsyKeyDataItem itemType)
+{
+    ANI_LOGE_THROW(CF_NOT_SUPPORT, "GetKeyData not supported!");
+    return {};
+}
+
 string PubKeyImpl::GetFormat()
 {
     ANI_LOGE_THROW(CF_NOT_SUPPORT, "GetFormat not supported!");
