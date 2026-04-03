@@ -34,7 +34,23 @@ enum CertResult: i32 {
   ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY = 19030005,
   ERR_KEYUSAGE_NO_CERTSIGN = 19030006,
   ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE = 19030007,
-  ERR_MAYBE_WRONG_PASSWORD = 19030008
+  ERR_MAYBE_WRONG_PASSWORD = 19030008,
+  ERR_CERT_UNTRUSTED = 19030009,
+  ERR_CERT_HAS_REVOKED = 19030010,
+  ERR_UNKNOWN_CRITICAL_EXTENSION = 19030011,
+  ERR_CERT_HOSTNAME_MISMATCH = 19030012,
+  ERR_CERT_EMAIL_ADDRESS_MISMATCH = 19030013,
+  ERR_CERT_KEYUSAGE_MISMATCH = 19030014,
+  ERR_CRL_NOT_FOUND = 19030015,
+  ERR_CRL_NOT_YET_VALID = 19030016,
+  ERR_CRL_HAS_EXPIRED = 19030017,
+  ERR_CRL_SIGNATURE_FAILURE = 19030018,
+  ERR_CRL_ISSUER_NOT_FOUND = 19030019,
+  ERR_OCSP_RESPONSE_NOT_FOUND = 19030020,
+  ERR_OCSP_RESPONSE_INVALID = 19030021,
+  ERR_OCSP_SIGNATURE_FAILURE = 19030022,
+  ERR_OCSP_CERT_STATUS_UNKNOWN = 19030023,
+  ERR_NETWORK_TIMEOUT = 19030024,
 }
 
 union OptStrUint8Arr {
@@ -209,9 +225,55 @@ interface CertChainValidator {
   @gen_async("validate")
   @gen_promise("validate")
   ValidateSync(certChain: CertChainData): void;
+  @gen_promise("validate")
+  ValidateCertSync(cert: X509Cert, params: X509CertValidatorParams): VerifyCertResult;
   @get("algorithm") GetAlgorithm(): String;
 }
 function CreateCertChainValidator(algorithm: String): CertChainValidator;
+
+enum CertRevocationFlag: i32 {
+  CERT_REVOCATION_PREFER_OCSP = 0,
+  CERT_REVOCATION_CRL_CHECK = 1,
+  CERT_REVOCATION_OCSP_CHECK = 2,
+  CERT_REVOCATION_CHECK_ALL_CERT = 3
+}
+
+enum OcspDigest: i32 {
+  SHA1 = 0,
+  SHA224 = 1,
+  SHA256 = 2,
+  SHA384 = 3,
+  SHA512 = 4
+}
+
+struct X509CertRevokedParams {
+  revocationFlags: Array<CertRevocationFlag>;
+  crls: Optional<Array<X509CRL>>;
+  allowDownloadCrl: Optional<bool>;
+  ocspResponses: Optional<Array<@typedarray Array<u8>>>;
+  allowOcspCheckOnline: Optional<bool>;
+  ocspDigest: Optional<OcspDigest>;
+}
+
+struct X509CertValidatorParams {
+  untrustedCerts: Optional<Array<X509Cert>>;
+  trustedCerts: Optional<Array<X509Cert>>;
+  trustSystemCa: Optional<bool>;
+  partialChain: Optional<bool>;
+  allowDownloadIntermediateCa: Optional<bool>;
+  date: Optional<String>;
+  validateDate: Optional<bool>;
+  ignoreErrs: Optional<Array<CertResult>>;
+  hostnames: Optional<Array<String>>;
+  emailAddresses: Optional<Array<String>>;
+  keyUsage: Optional<Array<KeyUsageType>>;
+  userId: Optional<@typedarray Array<u8>>;
+  revokedParams: Optional<X509CertRevokedParams>;
+}
+
+interface VerifyCertResult {
+  @get("certChain") GetCertChain(): Array<X509Cert>;
+}
 
 enum GeneralNameType: i32 {
   GENERAL_NAME_TYPE_OTHER_NAME = 0,

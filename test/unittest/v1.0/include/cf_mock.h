@@ -153,12 +153,21 @@ public:
     MOCK_METHOD(int, BIO_write, (BIO *b, const void *data, int dlen));
     MOCK_METHOD(int, BIO_do_connect_retry, (BIO *b, int timeout, int retry));
     MOCK_METHOD(unsigned long, ERR_peek_last_error, ());
+    MOCK_METHOD(unsigned long, ERR_peek_error, ());
     MOCK_METHOD(CfResult, CfGetCertIdInfo, (STACK_OF(X509) *x509CertChain, const CfBlob *ocspDigest,
         HcfX509TrustAnchor *trustAnchor, OcspCertIdInfo *certIdInfo, int index));
     MOCK_METHOD(X509 *, X509_load_http, (const char *url, BIO *bio, BIO *rbio, int timeout));
     MOCK_METHOD(int, X509_check_issued, (X509 *issuer, X509 *subject));
+    MOCK_METHOD(int, X509_STORE_CTX_get_error, (X509_STORE_CTX *ctx));
+    MOCK_METHOD(STACK_OF(X509) *, X509_STORE_CTX_get0_chain, (X509_STORE_CTX *ctx));
+    MOCK_METHOD(STACK_OF(X509) *, X509_STORE_CTX_get1_chain, (X509_STORE_CTX *ctx));
+    MOCK_METHOD(X509 *, X509_STORE_CTX_get_current_cert, (X509_STORE_CTX *ctx));
     MOCK_METHOD(CfResult, ValidateCertDate, (X509 *cert, CfBlob *date));
     MOCK_METHOD(int, X509_STORE_CTX_get1_issuer, (X509 **issuer, X509_STORE_CTX *ctx, X509 *x));
+    MOCK_METHOD(int, ASN1_TIME_set_string, (ASN1_TIME *s, const char *str));
+    MOCK_METHOD(int, ASN1_TIME_to_tm, (const ASN1_TIME *s, struct tm *tm));
+    MOCK_METHOD(int, X509_up_ref, (X509 * x509));
+    MOCK_METHOD(int, OSSL_HTTP_REQ_CTX_nbio_d2i, (OSSL_HTTP_REQ_CTX * rctx, ASN1_VALUE **pval, const ASN1_ITEM *it));
     static NiceMock<X509OpensslMock> &GetInstance(void);
     static void SetMockFlag(bool flag);
     static void SetHcfMockFlag(bool flag);
@@ -176,6 +185,7 @@ private:
     void SetMockFunDefaultBehaviorPartSix(void);
     void SetMockFunDefaultBehaviorPartSeven(void);
     void SetMockFunDefaultBehaviorPartEight(void);
+    void SetMockFunDefaultBehaviorPartNine(void);
 };
 } // namespace CFMock
 #endif /* CF_MOCK_H */
