@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2025 Huawei Device Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -33,7 +33,8 @@ void FreeTrustAnchorArray(HcfX509TrustAnchorArray *&trustAnchors);
 
 void FreeCertChainValidateResult(HcfX509CertChainValidateResult *result);
 
-bool BuildX509CertValidatorParams(X509CertValidatorParams const& param, HcfX509CertValidatorParams &hcfParam);
+CfResult BuildX509CertValidatorParams(X509CertValidatorParams const& param,
+    HcfX509CertValidatorParams &hcfParam, const char *&errMsg);
 void FreeX509CertValidatorParams(HcfX509CertValidatorParams &hcfParam);
 void FreeVerifyCertResult(HcfVerifyCertResult &result);
 } // namespace ANI::CertFramework

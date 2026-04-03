@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Huawei Device Co., Ltd.
+ * Copyright (c) 2023-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -79,6 +79,7 @@ typedef struct HcfX509CertRevokedParams {
 #define MAX_EMAIL_ADDRESS_COUNT 1
 #define MAX_HOSTNAME_LENGTH 128
 #define MAX_EMAIL_ADDRESS_LENGTH 128
+#define MAX_USER_ID_LEN 128
 
 #define MIN_DATE_LEN 13
 #define MAX_DATE_LEN 15
@@ -95,6 +96,7 @@ typedef struct HcfX509CertValidatorParams {
     HcfStringArray hostnames;
     HcfStringArray emailAddresses;
     HcfInt32Array keyUsage;
+    CfBlob userId;
     HcfX509CertRevokedParams *revokedParams;
 } HcfX509CertValidatorParams;
 

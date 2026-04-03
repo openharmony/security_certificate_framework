@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Huawei Device Co., Ltd.
+ * Copyright (c) 2023-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -55,9 +55,10 @@ typedef struct NapiParamInfo {
     struct NapiParamInfo *innerParams;
 } NapiParamInfo;
 
-CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, bool mustExist, napi_value &value);
+CfResult NapiGetProperty(napi_env env, napi_value arg, const char *name, napi_value &value, char **errMsg);
 CfResult NapiGetBoolValueEx(napi_env env, napi_value arg, const char *name, bool &value, char **errMsg);
 CfResult NapiGetStringValueEx(napi_env env, napi_value arg, const NapiParamInfo *info, char *&value, char **errMsg);
+CfResult NapiGetBlobValueEx(napi_env env, napi_value arg, const NapiParamInfo *info, CfBlob &value, char **errMsg);
 
 typedef struct {
     napi_value obj;

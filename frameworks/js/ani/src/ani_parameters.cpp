@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2025 Huawei Device Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Device Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,6 +15,7 @@
 
 #include "ani_parameters.h"
 #include "securec.h"
+#include "cert_chain_validator.h"
 
 namespace {
 using namespace ANI::CertFramework;
@@ -690,61 +691,98 @@ void FreeCertChainValidateResult(HcfX509CertChainValidateResult *result)
     FreeX509TrustAnchor(result->trustAnchor);
 }
 
-namespace {
-bool BuildCertArray(optional<array<X509Cert>> const& certs, HcfX509CertificateArray &hcfCerts)
+bool CheckArrayCount(uint32_t count, uint32_t maxCount, const char *&errMsg)
+{
+    if (count > maxCount) {
+        errMsg = "array count exceeds limit";
+        return false;
+    }
+    return true;
+}
+
+bool CheckStringLength(uint32_t len, uint32_t maxLen, const char *&errMsg)
+{
+    if (len > maxLen) {
+        errMsg = "string length exceeds limit";
+        return false;
+    }
+    return true;
+}
+
+CfResult BuildCertArrayInner(const char *name, optional<array<X509Cert>> const& certs,
+    HcfX509CertificateArray &hcfCerts, uint32_t maxCount, const char *&errMsg)
 {
     if (!certs.has_value()) {
-        return true;
+        return CF_SUCCESS;
     }
     uint32_t count = certs.value().size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
-        return true;
+    if (count == 0) {
+        return CF_SUCCESS;
+    }
+    if (count > maxCount) {
+        errMsg = "array count exceeds limit";
+        return CF_ERR_PARAMETER_CHECK;
     }
     hcfCerts.data = static_cast<HcfX509Certificate **>(CfMalloc(sizeof(HcfX509Certificate *) * count, 0));
     if (hcfCerts.data == nullptr) {
-        return false;
+        errMsg = "malloc failed";
+        return CF_ERR_MALLOC;
     }
     hcfCerts.count = count;
     for (uint32_t i = 0; i < count; ++i) {
         hcfCerts.data[i] = reinterpret_cast<HcfX509Certificate *>(certs.value()[i]->GetX509CertObj());
     }
-    return true;
+    return CF_SUCCESS;
 }
 
-bool BuildStringArray(optional<array<string>> const& strs, HcfStringArray &hcfStrs)
+bool BuildStringArrayInner(optional<array<string>> const& strs, HcfStringArray &hcfStrs,
+    uint32_t maxCount, uint32_t maxLen, const char *&errMsg)
 {
     if (!strs.has_value()) {
         return true;
     }
     uint32_t count = strs.value().size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
+    if (count == 0) {
         return true;
+    }
+    if (!CheckArrayCount(count, maxCount, errMsg)) {
+        return false;
     }
     hcfStrs.data = static_cast<char **>(CfMalloc(sizeof(char *) * count, 0));
     if (hcfStrs.data == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
     hcfStrs.count = count;
     for (uint32_t i = 0; i < count; ++i) {
+        if (!CheckStringLength(strs.value()[i].size(), maxLen, errMsg)) {
+            return false;
+        }
         hcfStrs.data[i] = strdup(strs.value()[i].c_str());
         if (hcfStrs.data[i] == nullptr) {
+            errMsg = "strdup failed";
             return false;
         }
     }
     return true;
 }
 
-bool BuildInt32Array(optional<array<KeyUsageType>> const& vals, HcfInt32Array &hcfArr)
+bool BuildInt32ArrayInner(optional<array<KeyUsageType>> const& vals, HcfInt32Array &hcfArr,
+    uint32_t maxCount, const char *&errMsg)
 {
     if (!vals.has_value()) {
         return true;
     }
     uint32_t count = vals.value().size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
+    if (count == 0) {
         return true;
+    }
+    if (!CheckArrayCount(count, maxCount, errMsg)) {
+        return false;
     }
     hcfArr.data = static_cast<int32_t *>(CfMalloc(sizeof(int32_t) * count, 0));
     if (hcfArr.data == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
     hcfArr.count = count;
@@ -754,17 +792,22 @@ bool BuildInt32Array(optional<array<KeyUsageType>> const& vals, HcfInt32Array &h
     return true;
 }
 
-bool BuildResultArray(optional<array<CertResult>> const& vals, HcfInt32Array &hcfArr)
+bool BuildResultArrayInner(optional<array<CertResult>> const& vals, HcfInt32Array &hcfArr,
+    uint32_t maxCount, const char *&errMsg)
 {
     if (!vals.has_value()) {
         return true;
     }
     uint32_t count = vals.value().size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
+    if (count == 0) {
         return true;
+    }
+    if (!CheckArrayCount(count, maxCount, errMsg)) {
+        return false;
     }
     hcfArr.data = static_cast<int32_t *>(CfMalloc(sizeof(int32_t) * count, 0));
     if (hcfArr.data == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
     hcfArr.count = count;
@@ -774,14 +817,17 @@ bool BuildResultArray(optional<array<CertResult>> const& vals, HcfInt32Array &hc
     return true;
 }
 
-bool BuildRevocationFlags(array<CertRevocationFlag> const& flags, HcfInt32Array &hcfArr)
+bool BuildRevocationFlagsInner(array<CertRevocationFlag> const& flags, HcfInt32Array &hcfArr,
+    const char *&errMsg)
 {
     uint32_t count = flags.size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
+    if (count == 0 || count > MAX_REVOCATION_FLAG_COUNT) {
+        errMsg = "revocationFlags count invalid";
         return false;
     }
     hcfArr.data = static_cast<int32_t *>(CfMalloc(sizeof(int32_t) * count, 0));
     if (hcfArr.data == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
     hcfArr.count = count;
@@ -791,17 +837,21 @@ bool BuildRevocationFlags(array<CertRevocationFlag> const& flags, HcfInt32Array 
     return true;
 }
 
-bool BuildCrlArray(optional<array<X509CRL>> const& crls, HcfX509CrlArray &hcfCrls)
+bool BuildCrlArrayInner(optional<array<X509CRL>> const& crls, HcfX509CrlArray &hcfCrls, const char *&errMsg)
 {
     if (!crls.has_value()) {
         return true;
     }
     uint32_t count = crls.value().size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
+    if (count == 0) {
         return true;
+    }
+    if (!CheckArrayCount(count, MAX_CRL_COUNT, errMsg)) {
+        return false;
     }
     hcfCrls.data = static_cast<HcfX509Crl **>(CfMalloc(sizeof(HcfX509Crl *) * count, 0));
     if (hcfCrls.data == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
     hcfCrls.count = count;
@@ -811,17 +861,22 @@ bool BuildCrlArray(optional<array<X509CRL>> const& crls, HcfX509CrlArray &hcfCrl
     return true;
 }
 
-bool BuildOcspResponses(optional<array<array<uint8_t>>> const& responses, CfBlobArray &hcfArr)
+bool BuildOcspResponsesInner(optional<array<array<uint8_t>>> const& responses, CfBlobArray &hcfArr,
+    const char *&errMsg)
 {
     if (!responses.has_value()) {
         return true;
     }
     uint32_t count = responses.value().size();
-    if (count == 0 || count > MAX_LEN_OF_ARRAY) {
+    if (count == 0) {
         return true;
+    }
+    if (!CheckArrayCount(count, MAX_OCSP_RESPONSE_COUNT, errMsg)) {
+        return false;
     }
     hcfArr.data = static_cast<CfBlob *>(CfMalloc(sizeof(CfBlob) * count, 0));
     if (hcfArr.data == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
     hcfArr.count = count;
@@ -831,25 +886,27 @@ bool BuildOcspResponses(optional<array<array<uint8_t>>> const& responses, CfBlob
     return true;
 }
 
-bool BuildRevokedParams(optional<X509CertRevokedParams> const& params, HcfX509CertRevokedParams *&hcfParams)
+bool BuildRevokedParamsInner(optional<X509CertRevokedParams> const& params, HcfX509CertRevokedParams *&hcfParams,
+    const char *&errMsg)
 {
     if (!params.has_value()) {
         return true;
     }
     hcfParams = static_cast<HcfX509CertRevokedParams *>(CfMalloc(sizeof(HcfX509CertRevokedParams), 0));
     if (hcfParams == nullptr) {
+        errMsg = "malloc failed";
         return false;
     }
-    if (!BuildRevocationFlags(params->revocationFlags, hcfParams->revocationFlags)) {
+    if (!BuildRevocationFlagsInner(params->revocationFlags, hcfParams->revocationFlags, errMsg)) {
         return false;
     }
-    if (!BuildCrlArray(params->crls, hcfParams->crls)) {
+    if (!BuildCrlArrayInner(params->crls, hcfParams->crls, errMsg)) {
         return false;
     }
     hcfParams->allowDownloadCrl = params->allowDownloadCrl.has_value() ? params->allowDownloadCrl.value() : false;
     hcfParams->allowOcspCheckOnline = params->allowOcspCheckOnline.has_value() ?
         params->allowOcspCheckOnline.value() : false;
-    if (!BuildOcspResponses(params->ocspResponses, hcfParams->ocspResponses)) {
+    if (!BuildOcspResponsesInner(params->ocspResponses, hcfParams->ocspResponses, errMsg)) {
         return false;
     }
     hcfParams->ocspDigest = params->ocspDigest.has_value() ? params->ocspDigest.value().get_value() :
@@ -910,43 +967,79 @@ void FreeRevokedParams(HcfX509CertRevokedParams *&hcfParams)
     FreeOcspResponses(hcfParams->ocspResponses);
     CF_FREE_PTR(hcfParams);
 }
+
+CfResult BuildResultStringInner(optional<string> const& strs, char *&res, uint32_t minLen, uint32_t maxLen,
+    const char *&errMsg)
+{
+    if (!strs.has_value()) {
+        return CF_SUCCESS;
+    }
+    uint32_t count = strs.value().size();
+    if (count == 0) {
+        errMsg = "date is empty string";
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    if (count > maxLen || count < minLen) {
+        errMsg = "date length invalid";
+        return CF_ERR_PARAMETER_CHECK;
+    }
+
+    res = strdup(strs.value().c_str());
+    if (res == nullptr) {
+        errMsg = "strdup date string failed";
+        return CF_ERR_MALLOC;
+    }
+    return CF_SUCCESS;
 }
 
-bool BuildX509CertValidatorParams(X509CertValidatorParams const& param, HcfX509CertValidatorParams &hcfParam)
+CfResult BuildX509CertValidatorParams(X509CertValidatorParams const& param,
+    HcfX509CertValidatorParams &hcfParam, const char *&errMsg)
 {
-    if (!BuildCertArray(param.untrustedCerts, hcfParam.untrustedCerts)) {
-        return false;
+    CfResult ret = BuildCertArrayInner("untrustedCerts", param.untrustedCerts, hcfParam.untrustedCerts,
+        MAX_UNTRUSTED_CERT_COUNT, errMsg);
+    if (ret != CF_SUCCESS) {
+        return ret;
     }
-    if (!BuildCertArray(param.trustedCerts, hcfParam.trustedCerts)) {
-        return false;
+    ret = BuildCertArrayInner("trustedCerts", param.trustedCerts, hcfParam.trustedCerts,
+        MAX_TRUSTED_CERT_COUNT, errMsg);
+    if (ret != CF_SUCCESS) {
+        return ret;
     }
     hcfParam.trustSystemCa = param.trustSystemCa.has_value() ? param.trustSystemCa.value() : false;
     hcfParam.partialChain = param.partialChain.has_value() ? param.partialChain.value() : false;
     hcfParam.allowDownloadIntermediateCa = param.allowDownloadIntermediateCa.has_value() ?
         param.allowDownloadIntermediateCa.value() : false;
     hcfParam.validateDate = param.validateDate.has_value() ? param.validateDate.value() : true;
-    if (param.date.has_value() && !param.date.value().empty()) {
-        hcfParam.date = strdup(param.date.value().c_str());
-        if (hcfParam.date == nullptr) {
-            return false;
+    ret = BuildResultStringInner(param.date, hcfParam.date, MIN_DATE_LEN, MAX_DATE_LEN, errMsg);
+    if (ret != CF_SUCCESS) {
+        return ret;
+    }
+    if (!BuildResultArrayInner(param.ignoreErrs, hcfParam.ignoreErrs, MAX_IGNORE_ERR_COUNT, errMsg)) {
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (!BuildStringArrayInner(param.hostnames, hcfParam.hostnames, MAX_HOSTNAMES_COUNT, MAX_HOSTNAME_LENGTH, errMsg)) {
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (!BuildStringArrayInner(param.emailAddresses, hcfParam.emailAddresses, MAX_EMAIL_ADDRESS_COUNT,
+        MAX_EMAIL_ADDRESS_LENGTH, errMsg)) {
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (!BuildInt32ArrayInner(param.keyUsage, hcfParam.keyUsage, MAX_KEYUSAGE_COUNT, errMsg)) {
+        return CF_ERR_PARAMETER_CHECK;
+    }
+    if (param.userId.has_value()) {
+        uint32_t userIdLen = param.userId.value().size();
+        if (userIdLen > MAX_USER_ID_LEN) {
+            errMsg = "userId length exceeds limit";
+            return CF_ERR_PARAMETER_CHECK;
         }
+        ArrayU8ToDataBlob(param.userId.value(), hcfParam.userId);
     }
-    if (!BuildResultArray(param.ignoreErrs, hcfParam.ignoreErrs)) {
-        return false;
+    if (!BuildRevokedParamsInner(param.revokedParams, hcfParam.revokedParams, errMsg)) {
+        return CF_ERR_PARAMETER_CHECK;
     }
-    if (!BuildStringArray(param.hostnames, hcfParam.hostnames)) {
-        return false;
-    }
-    if (!BuildStringArray(param.emailAddresses, hcfParam.emailAddresses)) {
-        return false;
-    }
-    if (!BuildInt32Array(param.keyUsage, hcfParam.keyUsage)) {
-        return false;
-    }
-    if (!BuildRevokedParams(param.revokedParams, hcfParam.revokedParams)) {
-        return false;
-    }
-    return true;
+    return CF_SUCCESS;
 }
 
 void FreeX509CertValidatorParams(HcfX509CertValidatorParams &hcfParam)
