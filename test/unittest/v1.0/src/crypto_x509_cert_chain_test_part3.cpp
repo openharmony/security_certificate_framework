@@ -886,7 +886,7 @@ static X509 *LoadX509FromCrtData(const char *data, size_t dataLen)
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest001, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -989,7 +989,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest002, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest003, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1036,7 +1036,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest003, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest004, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1077,7 +1077,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest004, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest005, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1118,7 +1118,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest005, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest006, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1159,7 +1159,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest006, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest007, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1200,7 +1200,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest007, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest008, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1289,7 +1289,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest009, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest010, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1333,7 +1333,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest010, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest011, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1369,7 +1369,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest011, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest012, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1408,7 +1408,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest012, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest013, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1447,7 +1447,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest013, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest014, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1473,7 +1473,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest014, Te
     EXPECT_EQ(result, CF_SUCCESS);
     EXPECT_NE(spi, nullptr);
     CfObjDestroy(spi);
-    
+
     inParams.validateParameters.allowDownloadIntermediateCa = false;
     inParams.validateParameters.trustSystemCa = true;
     result = HcfX509CertChainByParamsSpiCreate(&inParams, &spi);
@@ -1520,7 +1520,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest015, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest016, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1551,7 +1551,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest016, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest017, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1591,7 +1591,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest017, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest018, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1632,7 +1632,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest018, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest019, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1680,7 +1680,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest019, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest020, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1723,7 +1723,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest020, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest021, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1771,7 +1771,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest021, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest022, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1821,7 +1821,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest022, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest023, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
@@ -1865,7 +1865,7 @@ HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest023, Te
 HWTEST_F(CryptoX509CertChainTestPart3, HcfAllowDownloadIntermediateCaTest024, TestSize.Level0)
 {
     HcfX509CertChainBuildParameters inParams;
-    memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
+    (void)memset_s(&inParams, sizeof(HcfX509CertChainBuildParameters), 0, sizeof(HcfX509CertChainBuildParameters));
     HcfX509CertChainSpi *spi = nullptr;
 
     CfResult result;
